@@ -48,17 +48,14 @@ def answer_question(
 
     if not result["ok"]:
 
-        print(result["error"])
-        return {
-                    **result,
-                    **response_metadata,
-                }
+        raise ValueError(
+        f"Question rejected by Guardrails: {result['error']}"
+        )
 
     else:
 
         validated_question = result["extracted_text"]
 
-        question_json = result["json_text"]
 
         # 2. Determine access level and validate permissions.
         system_access = principal is not None
@@ -68,7 +65,7 @@ def answer_question(
                 principal,
                 PERMISSION_SYSTEM_SEARCH,
             )
-
+            
         else:
             # Guests cannot expand their search scope.
             include_session_uploads = False
@@ -97,6 +94,7 @@ def answer_question(
                     "in your current search scope."
                 ),
                 "sources": [],
+                "citations": [],
                 **response_metadata,
             }
 
@@ -115,6 +113,7 @@ def answer_question(
                     "in the selected documents."
                 ),
                 "sources": [],
+                "citations": [],
                 **response_metadata,
             }
 

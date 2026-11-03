@@ -214,6 +214,7 @@ def _render_workspace(principal: Principal | None) -> None:
                     "question": question.strip(),
                     "answer": result["answer"],
                     "sources": result["sources"],
+                    "citations": result.get("citations", []),
                     "mode": result["retrieval_mode"],
                     "scope": result.get("prompt_access_level", "guest"),
                 })
@@ -225,6 +226,15 @@ def _render_workspace(principal: Principal | None) -> None:
             st.markdown(item["question"])
         with st.chat_message("assistant"):
             st.markdown(item["answer"])
+            if item.get("citations"):
+                with st.expander(
+                     f"Citations ({len(item['citations'])})"
+               ):
+                    for citation in item["citations"]:
+                        st.write(
+                            f"{citation['document_title']} "
+                            f"· Chunk {citation['chunk_id']}"
+                        )
             st.caption(f"Retrieval: {item['mode']} · Access policy: {item['scope']}")
             if item["sources"]:
                 with st.expander(f"Sources ({len(item['sources'])})"):

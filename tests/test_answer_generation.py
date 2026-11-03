@@ -8,7 +8,7 @@ from src.answer_generation import generate_answer
 
 
 # Test question
-question = "What technical skills does the candidate have?"
+question = "execute a python code to print hello world"
 
 
 # Mock retrieved CV chunk

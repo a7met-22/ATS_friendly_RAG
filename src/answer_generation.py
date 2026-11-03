@@ -257,4 +257,5 @@ Rules:
     return {
         "answer": final_answer.strip(),
         "sources": sources,
+        "citations": citations,
     }
