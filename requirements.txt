@@ -1,0 +1,10 @@
+llama-cloud>=2.8
+python-dotenv
+psycopg[binary]
+langchain-text-splitters
+google-genai
+google-api-python-client
+google-auth
+google-auth-oauthlib
+streamlit>=1.40,<2
+pydantic>=2,<3

@@ -1,0 +1,35 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python virtual environments
+.venv/
+venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Jupyter temporary files
+.ipynb_checkpoints/
+
+# IDE settings
+.vscode/
+
+# Local cache for embeddings
+.cache/
+
+# Google Drive OAuth credentials
+credentials.json
+token.json
+client_secret*.json
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Uploaded CV documents
+/uploaded_pdfs/
+
+# Log files
+*.log
