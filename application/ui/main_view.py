@@ -31,10 +31,25 @@ def _initialize_state() -> None:
 
 
 def _logout() -> None:
-    for key in ("principal", "access_mode", "chat_history", "login_failures", "lockout_until"):
-        st.session_state[key] = None if key in {"principal", "access_mode", "lockout_until"} else [] if key == "chat_history" else 0
-    st.rerun()
+    for key in (
+        "principal",
+        "access_mode",
+        "chat_history",
+        "login_failures",
+        "lockout_until",
+    ):
+        st.session_state[key] = (
+            None
+            if key in {"principal", "access_mode", "lockout_until"}
+            else []
+            if key == "chat_history"
+            else 0
+        )
 
+    # Start a new isolated upload session.
+    st.session_state.upload_session_id = uuid.uuid4().hex
+
+    st.rerun()
 
 def _get_parser():
     if st.session_state.parser is None:
@@ -132,11 +147,7 @@ def _render_upload_section() -> None:
 
 
 def _render_workspace(principal: Principal | None) -> None:
-    st.sidebar.caption("DEBUG - Current Upload Session ID")
-
-    st.sidebar.code(
-    st.session_state.upload_session_id
-    )
+    
     authenticated = principal is not None
     st.title("RAG Document Assistant")
     if authenticated:
@@ -259,6 +270,7 @@ def render_app() -> None:
         st.session_state.access_mode = None
         st.session_state.chat_history = []
         st.warning("Your authenticated session expired. Please sign in again.")
+        st.session_state.upload_session_id = uuid.uuid4().hex
         st.rerun()
 
     if mode is None:
