@@ -18,6 +18,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = PROJECT_ROOT / ".env"
 DATA_DIR = PROJECT_ROOT / "uploaded_pdfs"
 
+# Parsing Ways Configuration:
+PARSER_TYPE = "pymupdf"  # LlamaParser or PyMuPDFParser
+
 # Load environment variables once from the project's .env file.
 load_dotenv(ENV_FILE)
 

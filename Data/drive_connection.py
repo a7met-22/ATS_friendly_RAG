@@ -9,13 +9,19 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+import io
+from googleapiclient.http import MediaIoBaseDownload
 
+from parsingWays.llama_parsing import create_drive_parser
+from parsingWays.pymupdf_parsing import parse_pdf_bytes as pymupdf_parser
+
+from config.settings import PARSER_TYPE
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 CREDENTIALS_FILE = PROJECT_ROOT / "credentials.json"
 TOKEN_FILE = PROJECT_ROOT / "token.json"
-
+PARSING = PARSER_TYPE  # "llama" or "pymupdf"
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
@@ -149,18 +155,51 @@ def load_resume_docs(service):
 
 
 def process_new_file(file, service):
-    """
-    Placeholder for document parsing functions.
-
-    Add your parsing function calls here later.
-    """
 
     print(f"Processing new file: {file['name']}")
 
-    # Example:
-    # parse_pdf(file["id"], service)
-    # parse_docx(file["id"], service)
+    # Download PDF from Google Drive.
+    request = service.files().get_media(
+        fileId=file["id"]
+    )
 
+    file_buffer = io.BytesIO()
+
+    downloader = MediaIoBaseDownload(
+        file_buffer,
+        request,
+    )
+
+    done = False
+
+    while not done:
+        _, done = downloader.next_chunk()
+
+    pdf_bytes = file_buffer.getvalue()
+
+    # Select the appropriate parser.
+    if PARSING == "llama":
+        parser = create_drive_parser()
+
+    elif PARSING == "pymupdf":
+        parser = pymupdf_parser
+
+    else:
+        raise ValueError(
+            f"Unsupported parser: {PARSING}"
+        )
+
+    # Parse the downloaded PDF.
+    parsed_document = parser(
+        pdf_bytes,
+        file["name"],
+    )
+
+    print(
+        f"Parsing completed: {file['name']}"
+    )
+
+    return parsed_document
 
 def track_folder_changes(service):
     """Detect newly added and deleted files."""
@@ -216,16 +255,12 @@ def track_folder_changes(service):
     return drive_files
 
 
-
 if __name__ == "__main__":
 
-    # Connect to Google Drive once
     service = connect_to_drive()
 
-    # Load existing files
     load_resume_docs(service)
 
-    # Track folder changes
     track_folder_changes(service)
 
     print(

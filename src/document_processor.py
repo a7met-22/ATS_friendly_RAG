@@ -61,7 +61,7 @@ def process_pdf_bytes(
             f"No chunks were generated for {filename}"
         )
 
-    # Step 3: Add missing metadata without changing the strategy.
+    # Step 3: Add missing metadata .
     for chunk in chunks:
 
         metadata = chunk.setdefault(
