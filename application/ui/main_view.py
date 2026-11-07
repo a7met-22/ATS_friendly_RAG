@@ -1,3 +1,6 @@
+
+
+
 """Streamlit views: access selection, login, upload, and RAG workspace."""
 
 from __future__ import annotations
@@ -13,7 +16,11 @@ from application.services.upload_service import process_uploaded_pdf
 from database_utilities.database_connection import get_connection
 from security.authorization import Principal, authenticate, is_principal_active
 from parsingWays.llama_parsing import create_drive_parser
+from parsingWays.pymupdf_parsing import parse_pdf_bytes as pymupdf_parser
+from config.settings import PARSER_TYPE
 
+
+PARSING = PARSER_TYPE  # "llama" or "pymupdf"
 
 def _initialize_state() -> None:
     defaults = {
@@ -53,7 +60,10 @@ def _logout() -> None:
 
 def _get_parser():
     if st.session_state.parser is None:
-        st.session_state.parser = create_drive_parser()
+        if PARSING == "llama":
+            st.session_state.parser = create_drive_parser()
+        elif PARSING == "pymupdf":   
+            st.session_state.parser = pymupdf_parser
     return st.session_state.parser
 
 

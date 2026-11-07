@@ -9,15 +9,25 @@ from typing import Any, Callable
 
 from src.chunking import section_based_chunking
 
+import io
+from googleapiclient.http import MediaIoBaseDownload
+
+from parsingWays.llama_parsing import create_drive_parser
+from parsingWays.pymupdf_parsing import parse_pdf_bytes as pymupdf_parser
+
+from config.settings import PARSER_TYPE
+
+PARSING = PARSER_TYPE  # "llama" or "pymupdf"
 
 CHUNK_SIZE = 500
 
 CHUNK_OVERLAP = 75
 
 
+
 def process_pdf_bytes(
     pdf_bytes: bytes,
-    filename: str,
+    filename ,
     parser: Callable[[bytes, str], dict[str, Any]],
     specialization: str | None = None,
 ) -> dict[str, Any]:
@@ -35,9 +45,9 @@ def process_pdf_bytes(
 
     # Step 1: Parse PDF into pages.
     parsed_document = parser(
-        pdf_bytes,
-        filename,
-    )
+    pdf_bytes,
+    filename,
+)
 
     pages = parsed_document.get("pages")
 
@@ -84,3 +94,4 @@ def process_pdf_bytes(
         "chunks": chunks,
         "specialization": specialization,
     }
+
