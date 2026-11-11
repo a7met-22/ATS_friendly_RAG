@@ -9,15 +9,6 @@ from typing import Any, Callable
 
 from src.chunking import section_based_chunking
 
-import io
-from googleapiclient.http import MediaIoBaseDownload
-
-from parsingWays.llama_parsing import create_drive_parser
-from parsingWays.pymupdf_parsing import parse_pdf_bytes as pymupdf_parser
-
-from config.settings import PARSER_TYPE
-
-PARSING = PARSER_TYPE  # "llama" or "pymupdf"
 
 CHUNK_SIZE = 500
 

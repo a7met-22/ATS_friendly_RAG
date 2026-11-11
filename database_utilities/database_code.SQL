@@ -164,3 +164,58 @@ CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding_hnsw
 --     COUNT(*) AS total_chunks,
 --     COUNT(embedding) AS chunks_with_embeddings
 -- FROM public.document_chunks;
+
+
+
+
+
+
+
+--
+--                    ┌─────────────────────┐
+--                    │     documents       │
+--                    │─────────────────────│
+--                    │ id                  │
+--                    │ filename            │
+--                    │ status              │
+--                    │ drive_file_id       │
+--                    │ content_hash        │
+--                    │ version             │
+--                    │ metadata            │
+--                    └──────────┬──────────┘
+--                               │
+--                               │ document_id
+--                               │
+--                               ▼
+--                    ┌─────────────────────┐
+--                    │  document_chunks     │
+--                    │─────────────────────│
+--                    │ id                  │
+--                    │ document_id         │
+--                    │ chunk_index         │
+--                    │ content             │
+--                    │ metadata            │
+--                    │ embedding VECTOR768  │
+--                    │ search_vector       │
+--                    └──────────┬──────────┘
+--                               │
+--                    ┌──────────┴──────────┐
+--                    │                     │
+--                    ▼                     ▼
+--                 GIN Index             HNSW Index
+--              Full-text search       Vector search
+--
+--
+--                    documents
+--                       │
+--                       │ document_id
+--                       ▼
+--             ┌─────────────────────┐
+--             │ document_versions   │
+--             │─────────────────────│
+--             │ version             │
+--             │ filename            │
+--             │ content_hash        │
+--             │ metadata            │
+--             │ created_at          │
+--             └─────────────────────┘
