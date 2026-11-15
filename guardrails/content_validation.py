@@ -7,6 +7,7 @@
 import re
 
 from typing import Any
+from observability.langsmith import trace_operation
 
 
 # --------------------------------------------------
@@ -97,7 +98,7 @@ def _find_matching_pattern(
 # --------------------------------------------------
 # Content Validation
 # --------------------------------------------------
-
+@trace_operation(name="validate_content", profile="pipeline")
 def validate_content(
     message_type: str,
     payload: dict[str, Any],

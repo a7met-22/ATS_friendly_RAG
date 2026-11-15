@@ -12,3 +12,4 @@ langsmith
 presidio-analyzer
 presidio-anonymizer
 phonenumbers
+pytest

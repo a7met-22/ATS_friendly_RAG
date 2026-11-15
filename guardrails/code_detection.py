@@ -7,6 +7,7 @@
 import ast
 import re
 from typing import Any
+from observability.langsmith import trace_operation
 
 
 # --------------------------------------------------
@@ -204,7 +205,7 @@ def _detect_python_ast(
 # --------------------------------------------------
 # Main Code Scanner
 # --------------------------------------------------
-
+@trace_operation(name="scan_code_patterns", profile="pipeline")
 def scan_code_patterns(
     text: str,
     message_type: str,

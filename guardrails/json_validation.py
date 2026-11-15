@@ -6,6 +6,7 @@
 
 import json
 from typing import Any
+from observability.langsmith import trace_operation
 
 from pydantic import (
     BaseModel,
@@ -184,7 +185,7 @@ def _validate_schema(
 # --------------------------------------------------
 # Main JSON Extraction Function
 # --------------------------------------------------
-
+@trace_operation(name="extract_and_validate", profile="parser")
 def extract_and_validate(
     text: str,
     message_type: str,

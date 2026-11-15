@@ -6,6 +6,7 @@
 
 import json
 from typing import Any
+from observability.langsmith import trace_operation
 
 from .error_classification import GuardrailError
 
@@ -64,6 +65,7 @@ def _extract_model_text(
     )
 
 
+@trace_operation(name="normalize_input", profile="pipeline")
 def normalize_input(
     content: Any,
     message_type: str,

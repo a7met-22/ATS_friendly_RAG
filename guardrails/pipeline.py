@@ -6,7 +6,7 @@
 
 import logging
 from typing import Any
-from observability.langsmith import trace_guardrail
+from observability.langsmith import trace_operation
 from .input_handling import normalize_input
 from .json_validation import extract_and_validate
 from .code_detection import scan_code_patterns
@@ -30,7 +30,10 @@ CHECK_NAMES = (
 )
 
 
-@trace_guardrail(name="inspect_message")
+@trace_operation(
+    name="inspect_message",
+    profile="pipeline",
+)
 def inspect_message(
     content: Any,
     message_type: str,
