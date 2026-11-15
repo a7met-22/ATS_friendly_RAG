@@ -8,3 +8,7 @@ google-auth
 google-auth-oauthlib
 streamlit>=1.40,<2
 pydantic>=2,<3
+langsmith
+presidio-analyzer
+presidio-anonymizer
+phonenumbers
