@@ -1,0 +1,88 @@
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    container_name: ahmed-postgres-dev
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${DEV_DB_USER:?DEV_DB_USER is required}
+      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD:?DEV_DB_PASSWORD is required}
+      POSTGRES_DB: ${DEV_DB_NAME:?DEV_DB_NAME is required}
+      PGDATA: /var/lib/postgresql/18/docker
+
+    ports:
+      - "127.0.0.1:5434:5432"
+
+    volumes:
+      - dev_postgres_data:/var/lib/postgresql
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+    networks:
+      - dev_network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: rag-resume-app-dev
+    restart: unless-stopped
+    init: true
+
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DEV_DB_NAME:?DEV_DB_NAME is required}
+      DB_USER: ${DEV_DB_USER:?DEV_DB_USER is required}
+      DB_PASSWORD: ${DEV_DB_PASSWORD:?DEV_DB_PASSWORD is required}
+
+    command:
+      [
+        "streamlit",
+        "run",
+        "app.py",
+        "--server.address=0.0.0.0",
+        "--server.port=8501",
+        "--server.headless=true",
+        "--server.runOnSave=true"
+      ]
+
+    ports:
+      - "127.0.0.1:8502:8501"
+
+    volumes:
+      - .:/app
+      - ./credentials.json:/app/credentials.json:ro
+      - ./token.json:/app/token.json
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - dev_network
+
+volumes:
+  dev_postgres_data:
+    name: rag_resume_dev_postgres_data
+
+networks:
+  dev_network:
+    name: rag_resume_dev_network
+    driver: bridge

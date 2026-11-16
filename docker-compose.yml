@@ -1,0 +1,84 @@
+
+
+
+services:
+
+  db:
+    image: pgvector/pgvector:pg18
+
+    container_name: ahmed-postgres
+
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${DB_USER:?DB_USER is required}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:?DB_NAME is required}
+      PGDATA: /var/lib/postgresql/18/docker
+
+    ports:
+      - "127.0.0.1:5433:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+    networks:
+      - rag_network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: rag-resume-app
+
+    restart: unless-stopped
+
+    init: true
+
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+
+    ports:
+      - "8501:8501"
+
+    volumes:
+      - ./uploaded_pdfs:/app/uploaded_pdfs
+      - ./credentials.json:/app/credentials.json:ro
+      - ./token.json:/app/token.json
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - rag_network
+
+
+volumes:
+  postgres_data:
+    external: true
+    name: ahmed_postgres_data
+
+
+networks:
+  rag_network:
+    driver: bridge

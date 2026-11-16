@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from observability.langsmith import trace_operation
+from observability.tracing import trace_operation
 
 
 @trace_operation(

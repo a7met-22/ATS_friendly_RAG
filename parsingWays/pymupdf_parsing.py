@@ -6,6 +6,7 @@
 import os
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
+import fitz
 
 
 def _parse_single_pdf(
@@ -122,3 +123,8 @@ def parse_pdf_bytes(
 
         # Preserve the same order as the input list.
         return [future.result() for future in futures]
+
+
+
+
+

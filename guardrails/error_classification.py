@@ -5,7 +5,7 @@
 """Guardrails error definitions and classification."""
 
 from typing import Any
-from observability.langsmith import trace_operation
+from observability.tracing import trace_operation
 
 class GuardrailError(Exception):
     """Expected error raised during guardrail processing."""
