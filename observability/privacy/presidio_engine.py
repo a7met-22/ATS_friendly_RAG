@@ -1,65 +1,30 @@
 
 
-"""Presidio analyzer and anonymizer configuration."""
+
+"""Centralized Presidio engine initialization."""
 
 from functools import lru_cache
 
-import phonenumbers
-
 from presidio_analyzer import AnalyzerEngine
-from presidio_analyzer.predefined_recognizers.generic.phone_recognizer import (
-    PhoneRecognizer,
-)
 from presidio_anonymizer import AnonymizerEngine
 
-
 SUPPORTED_ENTITIES = [
+    "PERSON",
     "EMAIL_ADDRESS",
     "PHONE_NUMBER",
+    "LOCATION",
+    "IP_ADDRESS",
+    "URL",
     "CREDIT_CARD",
     "IBAN_CODE",
-    "IP_ADDRESS",
+    "US_SSN",
 ]
-
-PHONE_CONTEXT = [
-    "phone",
-    "phone number",
-    "telephone",
-    "mobile",
-    "mobile number",
-    "cellphone",
-    "contact number",
-    "call",
-    "هاتف",
-    "رقم الهاتف",
-    "رقم الموبايل",
-    "رقم الجوال",
-    "телефон",
-    "téléphone",
-    "telefon",
-    "teléfono",
-]
-
 
 @lru_cache(maxsize=1)
-def get_presidio_engines():
-    """Initialize and reuse Presidio engines."""
+def get_presidio_engines() -> tuple[AnalyzerEngine, AnonymizerEngine]:
+    """Initialize and cache Presidio analyzer and anonymizer engines."""
 
     analyzer = AnalyzerEngine()
-
-    # Replace the default phone recognizer with a global configuration.
-    analyzer.registry.remove_recognizer("PhoneRecognizer")
-
-    analyzer.registry.add_recognizer(
-        PhoneRecognizer(
-            supported_regions=sorted(phonenumbers.SUPPORTED_REGIONS),
-            supported_language="en",
-            supported_entity="PHONE_NUMBER",
-            context=PHONE_CONTEXT,
-            leniency=3,
-        )
-    )
-
     anonymizer = AnonymizerEngine()
 
     return analyzer, anonymizer

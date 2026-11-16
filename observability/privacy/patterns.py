@@ -1,67 +1,44 @@
 
 
 
-"""Additional patterns for detecting technical secrets."""
+"""Secret detection and redaction patterns."""
 
 import re
 
-
-SECRET_PATTERNS = [
-
-
-    (
-        re.compile(
-            r"""(?i)\b(?:password|passwd|secret|api[_-]?key|"""
-            r"""access[_-]?token|refresh[_-]?token|client[_-]?secret)"""
-            r"""\s*[:=]\s*["']?[^\s,;"']+"""
-        ),
-        "[REDACTED_SECRET]",
+SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(
+        r"""(?ix)
+        \b(
+            api[_-]?key |
+            access[_-]?token |
+            refresh[_-]?token |
+            client[_-]?secret |
+            password |
+            secret
+        )\b
+        (\s*[:=]\s*)
+        (["']?)
+        [^\s,;'"<>]+
+        \3
+        """
     ),
-    (
-        re.compile(
-            r"""(?i)\bhttps?://[^/\s:@]+:[^@\s/]+@"""
-        ),
-        "https://[REDACTED]@",
+    re.compile(
+        r"\bBearer\s+[A-Za-z0-9._~+/=-]+",
+        re.IGNORECASE,
     ),
-    (
-        re.compile(
-            r"\beyJ[A-Za-z0-9_-]{10,}\."
-            r"[A-Za-z0-9_-]{10,}\."
-            r"[A-Za-z0-9_-]{10,}\b"
-        ),
-        "[REDACTED_JWT]",
+    re.compile(
+        r"\bsk-[A-Za-z0-9_-]{12,}\b",
+        re.IGNORECASE,
     ),
-    (
-        re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+"),
-        "Bearer [REDACTED]",
-    ),
-    (
-        re.compile(
-            r"\b(?:sk-[A-Za-z0-9_-]{12,}|"
-            r"AIza[A-Za-z0-9_-]{20,}|"
-            r"gh[pousr]_[A-Za-z0-9]{20,})\b"
-        ),
-        "[REDACTED_API_KEY]",
-    ),
-    (
-        re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
-        "[REDACTED_AWS_KEY]",
-    ),
-    (
-        re.compile(r"\bxox[baprs]-[A-Za-z0-9-]+\b"),
-        "[REDACTED_SLACK_TOKEN]",
-    ),
-    (
-        re.compile(r"\b(?:sk|rk)_live_[A-Za-z0-9]{10,}\b"),
-        "[REDACTED_PAYMENT_KEY]",
-    ),
-]
-
+)
 
 def redact_secrets(value: str) -> str:
-    """Redact recognizable technical secrets."""
+    """Redact recognizable credentials and secret tokens."""
 
-    for pattern, replacement in SECRET_PATTERNS:
-        value = pattern.sub(replacement, value)
+    if not isinstance(value, str):
+        return value
+
+    for pattern in SECRET_PATTERNS:
+        value = pattern.sub("[REDACTED_SECRET]", value)
 
     return value

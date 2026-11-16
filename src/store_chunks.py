@@ -6,7 +6,7 @@
 import json
 import math
 from typing import Any
-
+from observability.langsmith import trace_operation
 
 from src.embeddings import (
     EMBEDDING_DIMENSIONS,
@@ -43,7 +43,11 @@ def build_embedding_text(
         ]
     ).strip()
 
-
+@trace_operation(
+    name="prepare_chunk_embeddings",
+    profile="embedding",
+    tags=["ingestion", "chunk-embeddings"],
+)
 def prepare_chunk_embeddings(
     document_name: str,
     chunks: list[dict[str, Any]],
@@ -98,7 +102,11 @@ def prepare_chunk_embeddings(
 
     return vectors
 
-
+@trace_operation(
+    name="store_chunks",
+    profile="pipeline",
+    tags=["ingestion", "postgresql", "persistence"],
+)
 def store_chunks(
     conn,
     document_id: int,

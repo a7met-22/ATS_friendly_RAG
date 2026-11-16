@@ -1,19 +1,18 @@
 
 
 
+"""Privacy protection and data sanitization."""
 
-from .sanitizer import (
+from observability.privacy.sanitizer import (
+    REDACTED,
     anonymize_text,
     sanitize_langsmith_payload,
-    sanitize_trace_inputs,
-    sanitize_trace_outputs,
     sanitize_value,
 )
 
 __all__ = [
+    "REDACTED",
     "anonymize_text",
     "sanitize_langsmith_payload",
-    "sanitize_trace_inputs",
-    "sanitize_trace_outputs",
     "sanitize_value",
 ]
