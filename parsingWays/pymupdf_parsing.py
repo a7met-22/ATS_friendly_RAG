@@ -3,6 +3,7 @@
 
 """PDF parsing utilities powered by PyMuPDF."""
 
+import asyncio
 import os
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
@@ -15,7 +16,6 @@ def _parse_single_pdf(
 ) -> dict[str, Any]:
     """Extract text from every page of one PDF."""
 
-    import fitz
 
     if not isinstance(pdf_bytes, bytes) or not pdf_bytes:
         raise ValueError(f"PDF is empty or invalid: {filename}")
@@ -44,7 +44,7 @@ def _parse_single_pdf(
     }
 
 
-def parse_pdf_bytes(
+async def parse_pdf_bytes(
     pdf_input: bytes | list[dict[str, Any]],
     filename: str | None = None,
     max_workers: int | None = None,
@@ -68,7 +68,7 @@ def parse_pdf_bytes(
         if not filename:
             raise ValueError("filename is required when parsing one PDF.")
 
-        return _parse_single_pdf(pdf_input, filename)
+        return await asyncio.to_thread(_parse_single_pdf, pdf_input, filename)
 
     if not isinstance(pdf_input, list):
         raise TypeError(
@@ -97,7 +97,8 @@ def parse_pdf_bytes(
     if len(pdf_input) == 1:
         file_data = pdf_input[0]
         return [
-            _parse_single_pdf(
+            await asyncio.to_thread(
+                _parse_single_pdf,
                 file_data["pdf_bytes"],
                 file_data["file_name"],
             )
@@ -111,18 +112,20 @@ def parse_pdf_bytes(
     if worker_count < 1:
         raise ValueError("max_workers must be at least 1.")
 
+    loop = asyncio.get_running_loop()
     with ProcessPoolExecutor(max_workers=worker_count) as executor:
-        futures = [
-            executor.submit(
+        tasks = [
+            loop.run_in_executor(
+                executor,
                 _parse_single_pdf,
                 file_data["pdf_bytes"],
                 file_data["file_name"],
             )
             for file_data in pdf_input
         ]
+        # ينتظر كل العمليات بالتوازي ويرجعهم بنفس الترتيب بدون حجب الـ Event Loop
+        return await asyncio.gather(*tasks)
 
-        # Preserve the same order as the input list.
-        return [future.result() for future in futures]
 
 
 

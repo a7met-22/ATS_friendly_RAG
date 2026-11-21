@@ -1,8 +1,6 @@
+"""Async chunk embedding preparation and PostgreSQL persistence."""
 
-
-
-"""Prepare chunk embeddings and persist chunks in PostgreSQL."""
-
+import inspect
 import json
 import math
 from typing import Any
@@ -20,10 +18,8 @@ def build_embedding_text(
     chunk: dict[str, Any],
     specialization: str | None = None,
 ) -> str:
-    """Combine document name, section, specialization, and content."""
-
+    """Combine document name, section, specialization, and content (Sync)."""
     metadata = chunk.get("metadata") or {}
-
     section = metadata.get("section") or ""
 
     specialization_value = (
@@ -43,18 +39,18 @@ def build_embedding_text(
         ]
     ).strip()
 
+
 @trace_operation(
     name="prepare_chunk_embeddings",
     profile="embedding",
     tags=["ingestion", "chunk-embeddings"],
 )
-def prepare_chunk_embeddings(
+async def prepare_chunk_embeddings(
     document_name: str,
     chunks: list[dict[str, Any]],
     specialization: str | None = None,
 ) -> list[list[float]]:
-    """Generate one document embedding for each chunk."""
-
+    """Generate one document embedding for each chunk asynchronously."""
     if not chunks:
         raise ValueError(
             "Cannot generate embeddings for an empty chunk list."
@@ -63,13 +59,9 @@ def prepare_chunk_embeddings(
     texts = []
 
     for index, chunk in enumerate(chunks):
-
         content = chunk.get("content")
 
-        if (
-            not isinstance(content, str)
-            or not content.strip()
-        ):
+        if not isinstance(content, str) or not content.strip():
             raise ValueError(
                 f"Chunk {index} has empty or invalid content."
             )
@@ -89,11 +81,15 @@ def prepare_chunk_embeddings(
             )
         )
 
-
-    vectors = generate_embeddings(
+    # يدعم استدعاء generate_embeddings سواء اتحولت لـ async أو لسه sync
+    emb_result = generate_embeddings(
         texts,
         task_type="RETRIEVAL_DOCUMENT",
     )
+    if inspect.isawaitable(emb_result):
+        vectors = await emb_result
+    else:
+        vectors = emb_result
 
     if len(vectors) != len(chunks):
         raise RuntimeError(
@@ -102,12 +98,13 @@ def prepare_chunk_embeddings(
 
     return vectors
 
+
 @trace_operation(
     name="store_chunks",
     profile="pipeline",
     tags=["ingestion", "postgresql", "persistence"],
 )
-def store_chunks(
+async def store_chunks(
     conn,
     document_id: int,
     chunks: list[dict[str, Any]],
@@ -115,11 +112,10 @@ def store_chunks(
     specialization: str | None = None,
     replace_existing: bool = True,
 ) -> int:
-    """Store chunks and embeddings using the caller's connection.
+    """Store chunks and embeddings asynchronously using the caller's connection.
 
     The caller is responsible for opening and committing the transaction.
     """
-
     if not chunks:
         raise ValueError(
             "Cannot store an empty chunk list."
@@ -131,27 +127,19 @@ def store_chunks(
         )
 
     normalized_rows = []
-
     seen_indexes = set()
 
     for position, (chunk, vector) in enumerate(
         zip(chunks, embeddings, strict=True)
     ):
-
         content = chunk.get("content")
 
-        if (
-            not isinstance(content, str)
-            or not content.strip()
-        ):
+        if not isinstance(content, str) or not content.strip():
             raise ValueError(
                 f"Chunk {position} has empty or invalid content."
             )
 
-        chunk_index = chunk.get(
-            "chunk_index",
-            position,
-        )
+        chunk_index = chunk.get("chunk_index", position)
 
         if (
             isinstance(chunk_index, bool)
@@ -175,22 +163,14 @@ def store_chunks(
                 f"got {len(vector)}."
             )
 
-        vector_values = [
-            float(value)
-            for value in vector
-        ]
+        vector_values = [float(value) for value in vector]
 
-        if not all(
-            math.isfinite(value)
-            for value in vector_values
-        ):
+        if not all(math.isfinite(value) for value in vector_values):
             raise ValueError(
                 f"Chunk {position} embedding contains invalid values."
             )
 
-        metadata = dict(
-            chunk.get("metadata") or {}
-        )
+        metadata = dict(chunk.get("metadata") or {})
 
         if specialization and not metadata.get("specialization"):
             metadata["specialization"] = specialization
@@ -215,18 +195,14 @@ def store_chunks(
                 document_id,
                 chunk_index,
                 content,
-                json.dumps(
-                    metadata,
-                    ensure_ascii=False,
-                ),
+                json.dumps(metadata, ensure_ascii=False),
                 vector_literal,
             )
         )
 
-    with conn.cursor() as cur:
-
+    async with conn.cursor() as cur:
         # Verify document existence.
-        cur.execute(
+        await cur.execute(
             """
             SELECT id
             FROM public.documents
@@ -235,15 +211,14 @@ def store_chunks(
             (document_id,),
         )
 
-        if cur.fetchone() is None:
+        if await cur.fetchone() is None:
             raise ValueError(
                 f"Document {document_id} does not exist."
             )
 
         # Replace old chunks when processing a new document version.
         if replace_existing:
-
-            cur.execute(
+            await cur.execute(
                 """
                 DELETE FROM public.document_chunks
                 WHERE document_id = %s
@@ -251,7 +226,7 @@ def store_chunks(
                 (document_id,),
             )
 
-        cur.executemany(
+        await cur.executemany(
             """
             INSERT INTO public.document_chunks (
                 document_id,

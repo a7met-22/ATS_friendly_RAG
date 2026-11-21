@@ -34,7 +34,7 @@ def _validate_document_ids(
     )
 
 
-def keyword_search(
+async def keyword_search(
     query: str,
     top_k: int = 5,
     document_ids: list[int] | None = None,
@@ -70,11 +70,11 @@ def keyword_search(
     if not selected_ids:
         return []
 
-    with get_connection() as conn:
+    async with await get_connection() as conn:
 
-        with conn.cursor() as cur:
+        async with conn.cursor() as cur:
 
-            cur.execute(
+            await cur.execute(
                 """
                 SELECT
                     d.id AS document_id,
@@ -120,7 +120,7 @@ def keyword_search(
                 ),
             )
 
-            rows = cur.fetchall()
+            rows = await cur.fetchall()
 
     return [
         {

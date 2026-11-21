@@ -49,3 +49,24 @@
    |
    v
 9. Production Deployment
+
+
+
+Developer
+    |
+    v
+Git Push / Pull Request
+    |
+    v
+GitHub Actions
+    |
+    +---- Code Quality
+    |
+    +---- Automated Tests
+    |
+    +---- Security Checks
+    |
+    +---- Docker Build Validation
+    |
+    v
+CI Result: PASS / FAIL

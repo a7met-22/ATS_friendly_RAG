@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import io
 from typing import Any
-
+import asyncio
 from googleapiclient.http import MediaIoBaseDownload
 
 import Data.drive_connection as drive
@@ -34,11 +34,6 @@ from src.store_chunks import (
     prepare_chunk_embeddings,
     store_chunks,
 )
-
-
-# ============================================================
-# 1. Google Drive Download
-# ============================================================
 
 def download_file(service: Any, file_id: str) -> bytes:
     """Download one Google Drive file into memory."""
@@ -67,6 +62,10 @@ def download_file(service: Any, file_id: str) -> bytes:
         )
 
     return file_bytes
+
+async def download_file_async(service: Any, file_id: str) -> bytes:
+    """Async wrapper to download a Google Drive file in a separate thread."""
+    return await asyncio.to_thread(download_file, service, file_id)
 
 
 def _validate_drive_files(files: Any) -> list[dict[str, Any]]:
@@ -114,10 +113,6 @@ def _validate_drive_files(files: Any) -> list[dict[str, Any]]:
     return validated
 
 
-# ============================================================
-# 2. Document Metadata
-# ============================================================
-
 def _specialization_from_drive_file(
     file: dict[str, Any],
 ) -> str | None:
@@ -137,7 +132,7 @@ def _specialization_from_drive_file(
 # 3. Failed Document Handling
 # ============================================================
 
-def _register_failed_new_document(
+async def _register_failed_new_document(
     conn: Any,
     file: dict[str, Any],
     content_hash: str,
@@ -145,16 +140,16 @@ def _register_failed_new_document(
 ) -> None:
     """Register a new file as failed so it can be retried."""
 
-    with conn.transaction():
+    async with conn.transaction():
 
-        existing = get_document(
+        existing = await get_document(
             conn,
             file["id"],
         )
 
         if existing is None:
 
-            insert_document(
+            await insert_document(
                 conn=conn,
                 file=file,
                 content_hash=content_hash,
@@ -163,26 +158,22 @@ def _register_failed_new_document(
             )
 
 
-def _mark_existing_failed(
+async def _mark_existing_failed(
     conn: Any,
     document_id: int,
 ) -> None:
     """Persist failed processing status."""
 
-    with conn.transaction():
+    async with conn.transaction():
 
-        set_document_status(
+        await set_document_status(
             conn,
             document_id,
             "failed",
         )
 
 
-# ============================================================
-# 4. Process One Document
-# ============================================================
-
-def _process_one_file(
+async def _process_one_file(
     conn: Any,
     service: Any,
     file: dict[str, Any],
@@ -203,16 +194,16 @@ def _process_one_file(
         # Step 1: Retrieve existing document
         # ----------------------------------------------------
 
-        with conn.transaction():
+        async with conn.transaction():
 
-            existing = get_document(
+            existing = await get_document(
                 conn,
                 file_id,
             )
 
             has_complete_embeddings = (
                 existing is not None
-                and document_has_complete_embeddings(
+                and await document_has_complete_embeddings(
                     conn,
                     existing[0],
                 )
@@ -222,7 +213,7 @@ def _process_one_file(
         # Step 2: Download and calculate SHA-256
         # ----------------------------------------------------
 
-        file_bytes = download_file(
+        file_bytes = await download_file_async(
             service,
             file_id,
         )
@@ -283,9 +274,9 @@ def _process_one_file(
                 )
 
             # Mark existing document as processing.
-            with conn.transaction():
+            async with conn.transaction():
 
-                set_document_status(
+                await set_document_status(
                     conn,
                     document_id,
                     "processing",
@@ -309,7 +300,7 @@ def _process_one_file(
         # Step 5: Parse PDF and generate chunks
         # ----------------------------------------------------
 
-        processed = process_pdf_bytes(
+        processed = await process_pdf_bytes(
             pdf_bytes=file_bytes,
             filename=filename,
             parser=parser,
@@ -332,7 +323,7 @@ def _process_one_file(
         # Step 6: Generate embeddings
         # ----------------------------------------------------
 
-        vectors = prepare_chunk_embeddings(
+        vectors = await prepare_chunk_embeddings(
             document_name=filename,
             chunks=chunks,
             specialization=specialization,
@@ -351,11 +342,11 @@ def _process_one_file(
         # Step 7: Store document, chunks and embeddings
         # ----------------------------------------------------
 
-        with conn.transaction():
+        async with conn.transaction():
 
             if existing is None:
 
-                document_id = insert_document(
+                document_id = await insert_document(
                     conn=conn,
                     file=file,
                     content_hash=content_hash,
@@ -365,7 +356,7 @@ def _process_one_file(
 
             elif is_update:
 
-                document_id, _new_version = update_document(
+                document_id, _new_version = await update_document(
                     conn=conn,
                     document=existing,
                     file=file,
@@ -379,7 +370,7 @@ def _process_one_file(
                 document_id = existing[0]
 
             # Store chunks and embeddings.
-            store_chunks(
+            await store_chunks(
                 conn=conn,
                 document_id=document_id,
                 chunks=chunks,
@@ -389,7 +380,7 @@ def _process_one_file(
             )
 
             # Mark document as successfully processed.
-            set_document_status(
+            await set_document_status(
                 conn,
                 document_id,
                 "processed",
@@ -432,14 +423,14 @@ def _process_one_file(
 
             if existing is not None:
 
-                _mark_existing_failed(
+                await _mark_existing_failed(
                     conn,
                     existing[0],
                 )
 
             elif content_hash is not None:
 
-                _register_failed_new_document(
+                await _register_failed_new_document(
                     conn=conn,
                     file=file,
                     content_hash=content_hash,
@@ -456,18 +447,20 @@ def _process_one_file(
 
 # ============================================================
 # 5. Detect and Delete Missing Drive Documents
+# Execution Type: Blocking Database I/O
+# Future Strategy: Keep Synchronous within Worker
 # ============================================================
 
-def _delete_missing_drive_documents(
+async def _delete_missing_drive_documents(
     conn: Any,
     folder_id: str,
     current_file_ids: set[str],
     stats: dict[str, int],
 ) -> None:
 
-    with conn.transaction():
+    async with conn.transaction():
 
-        with conn.cursor() as cur:
+        async with conn.cursor() as cur:
 
             cur.execute(
                 """
@@ -490,9 +483,9 @@ def _delete_missing_drive_documents(
 
         try:
 
-            with conn.transaction():
+            async with conn.transaction():
 
-                deleted_filename = delete_document(
+                deleted_filename = await delete_document(
                     conn,
                     file_id,
                 )
@@ -515,12 +508,7 @@ def _delete_missing_drive_documents(
                 f"{type(exc).__name__}: {exc}"
             )
 
-
-# ============================================================
-# 6. Main Synchronization Function
-# ============================================================
-
-def sync_drive_documents(
+async def sync_drive_documents(
     service: Any,
     parser: Any,
 ) -> dict[str, int]:
@@ -532,8 +520,8 @@ def sync_drive_documents(
 
     # Load Drive files first.
     current_files = _validate_drive_files(
-        drive.load_resume_docs(service)
-     )
+        await asyncio.to_thread(drive.load_resume_docs, service)
+    )
 
     # Read the folder ID after loading the files.
     folder_id = drive.resume_folder_id
@@ -557,14 +545,14 @@ def sync_drive_documents(
         "failed": 0,
     }
 
-    conn = get_connection()
+    conn = await get_connection()
 
     try:
 
         # Process each current Drive file independently.
         for file in current_files:
 
-            _process_one_file(
+            await _process_one_file(
                 conn=conn,
                 service=service,
                 file=file,
@@ -577,13 +565,13 @@ def sync_drive_documents(
         # This protects existing records from an unexpected empty listing.
         if current_files:
 
-            _delete_missing_drive_documents(
+            await _delete_missing_drive_documents(
                 conn=conn,
                 folder_id=folder_id,
                 current_file_ids=current_file_ids,
                 stats=stats,
             )
-
+  
         else:
 
             print(
@@ -593,7 +581,7 @@ def sync_drive_documents(
 
     finally:
 
-        conn.close()
+        await conn.close()
 
     # --------------------------------------------------------
     # Synchronization Summary
@@ -626,7 +614,7 @@ if __name__ == "__main__":
     drive_parser = create_drive_parser()
 
     # Start synchronization.
-    sync_drive_documents(
+    asyncio.run(sync_drive_documents(
         service=drive_service,
         parser=drive_parser,
-    )
+    ))

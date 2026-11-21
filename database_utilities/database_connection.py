@@ -23,16 +23,16 @@ from config.settings import (
 )
 
 
-def get_connection() -> psycopg.Connection:
+async def get_connection() -> psycopg.Connection:
     """Create a PostgreSQL connection.
 
     Transaction management is controlled by the caller.
     """
-    return psycopg.connect(
+    return await psycopg.AsyncConnection.connect(
         host=DB_HOST,
         port=DB_PORT,
         dbname=DB_NAME,
         user=DB_USER,
         password=DB_PASSWORD,
         connect_timeout=10,
-    )
+        )

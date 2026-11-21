@@ -28,11 +28,11 @@ def _get_file_metadata(file):
     }
 
 
-def get_document(conn, drive_file_id):
+async def get_document(conn, drive_file_id):
     """Return an existing document using its Google Drive file ID."""
 
-    with conn.cursor() as cur:
-        cur.execute(
+    async with conn.cursor() as cur:
+        await cur.execute(
             """
             SELECT
                 id,
@@ -46,10 +46,10 @@ def get_document(conn, drive_file_id):
             (drive_file_id,),
         )
 
-        return cur.fetchone()
+        return await cur.fetchone()
 
 
-def insert_document(
+async def insert_document(
     conn,
     file,
     content_hash,
@@ -62,9 +62,9 @@ def insert_document(
 
     metadata = Jsonb(_get_file_metadata(file))
 
-    with conn.cursor() as cur:
+    async with conn.cursor() as cur:
 
-        cur.execute(
+        await cur.execute(
             """
             INSERT INTO public.documents (
                 filename,
@@ -88,9 +88,10 @@ def insert_document(
             ),
         )
 
-        document_id = cur.fetchone()[0]
+        row = await cur.fetchone()
+        document_id = row[0]
 
-        cur.execute(
+        await cur.execute(
             """
             INSERT INTO public.document_versions (
                 document_id,
@@ -112,7 +113,7 @@ def insert_document(
     return document_id
 
 
-def update_document(
+async def update_document(
     conn,
     document,
     file,
@@ -133,9 +134,9 @@ def update_document(
         parents = file.get("parents", [])
         folder_id = parents[0] if parents else None
 
-    with conn.cursor() as cur:
+    async with conn.cursor() as cur:
 
-        cur.execute(
+        await cur.execute(
             """
             UPDATE public.documents
             SET
@@ -161,7 +162,7 @@ def update_document(
             ),
         )
 
-        cur.execute(
+        await cur.execute(
             """
             INSERT INTO public.document_versions (
                 document_id,
@@ -184,13 +185,13 @@ def update_document(
     return document_id, new_version
 
 
-def set_document_status(conn, document_id, status):
+async def set_document_status(conn, document_id, status):
     """Update document processing status."""
 
     _validate_status(status)
 
-    with conn.cursor() as cur:
-        cur.execute(
+    async with conn.cursor() as cur:
+        await cur.execute(
             """
             UPDATE public.documents
             SET
@@ -202,11 +203,11 @@ def set_document_status(conn, document_id, status):
         )
 
 
-def document_has_complete_embeddings(conn, document_id):
+async def document_has_complete_embeddings(conn, document_id):
     """Check whether all document chunks have embeddings."""
 
-    with conn.cursor() as cur:
-        cur.execute(
+    async with conn.cursor() as cur:
+        await cur.execute(
             """
             SELECT
                 COUNT(*) AS total_chunks,
@@ -217,16 +218,16 @@ def document_has_complete_embeddings(conn, document_id):
             (document_id,),
         )
 
-        total_chunks, embedded_chunks = cur.fetchone()
+        total_chunks, embedded_chunks = await cur.fetchone()
 
     return total_chunks > 0 and total_chunks == embedded_chunks
 
 
-def delete_document(conn, drive_file_id):
+async def delete_document(conn, drive_file_id):
     """Delete a document using its Google Drive file ID."""
 
-    with conn.cursor() as cur:
-        cur.execute(
+    async with conn.cursor() as cur:
+        await cur.execute(
             """
             DELETE FROM public.documents
             WHERE drive_file_id = %s
@@ -235,6 +236,6 @@ def delete_document(conn, drive_file_id):
             (drive_file_id,),
         )
 
-        result = cur.fetchone()
+        result = await cur.fetchone()
 
     return result[0] if result else None

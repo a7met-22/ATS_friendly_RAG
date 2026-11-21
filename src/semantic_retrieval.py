@@ -46,7 +46,7 @@ def _vector_literal(
     )
 
 
-def semantic_search(
+async def semantic_search(
     query: str,
     top_k: int = 5,
     document_ids: list[int] | None = None,
@@ -78,20 +78,22 @@ def semantic_search(
         return []
 
     # Generate query embedding.
-    query_embedding = generate_embeddings(
+    
+    embeddings = await generate_embeddings(
         [query.strip()],
         task_type="RETRIEVAL_QUERY",
-    )[0]
+    )
+    query_embedding = embeddings[0]
 
     embedding_literal = _vector_literal(
         query_embedding
     )
 
-    with get_connection() as conn:
+    async with await get_connection() as conn:
 
-        with conn.cursor() as cur:
+        async with conn.cursor() as cur:
 
-            cur.execute(
+            await cur.execute(
                 """
                 SELECT
                     d.id AS document_id,
@@ -123,7 +125,7 @@ def semantic_search(
                 ),
             )
 
-            rows = cur.fetchall()
+            rows = await cur.fetchall()
 
     return [
         {

@@ -1,26 +1,20 @@
+"""Unified async retrieval facade: semantic, keyword, and hybrid search."""
 
-
-
-
-
-
-"""Unified retrieval facade: semantic, keyword, and hybrid search."""
-
+import asyncio
 from src.keyword_retrieval import keyword_search
-
 from src.semantic_retrieval import semantic_search
 
 
 RRF_K = 60
 
 
-def retrieve_chunks(
+async def retrieve_chunks(
     query: str,
     top_k: int = 5,
     document_ids: list[int] | None = None,
     mode: str = "hybrid",
 ) -> list[dict]:
-    """Retrieve chunks using semantic, keyword, or hybrid search.
+    """Retrieve chunks asynchronously using semantic, keyword, or hybrid search.
 
     Search is restricted to explicitly selected document IDs.
     An empty document selection returns no results.
@@ -35,10 +29,7 @@ def retrieve_chunks(
             "mode must be 'semantic', 'keyword', or 'hybrid'."
         )
 
-    if (
-        not isinstance(query, str)
-        or not query.strip()
-    ):
+    if not isinstance(query, str) or not query.strip():
         raise ValueError(
             "Query cannot be empty."
         )
@@ -57,8 +48,7 @@ def retrieve_chunks(
 
     # Semantic-only retrieval.
     if mode == "semantic":
-
-        return semantic_search(
+        return await semantic_search(
             query,
             top_k,
             document_ids,
@@ -66,70 +56,38 @@ def retrieve_chunks(
 
     # Keyword-only retrieval.
     if mode == "keyword":
-
-        return keyword_search(
+        return await keyword_search(
             query,
             top_k,
             document_ids,
         )
 
-    # Hybrid retrieval.
-    candidate_k = max(
-        top_k * 3,
-        top_k,
+    # Hybrid retrieval: تشغيل البحث الدلالي والكلمات المفتاحية في نفس اللحظة بالتوازي!
+    candidate_k = max(top_k * 3, top_k)
+
+    semantic_results, keyword_results = await asyncio.gather(
+        semantic_search(query, candidate_k, document_ids),
+        keyword_search(query, candidate_k, document_ids),
     )
 
-    semantic_results = semantic_search(
-        query,
-        candidate_k,
-        document_ids,
-    )
-
-    keyword_results = keyword_search(
-        query,
-        candidate_k,
-        document_ids,
-    )
-
+    # حساب الـ RRF Fusion (عملية خفيفة جداً في الذاكرة -> تفضل Sync)
     fused: dict[int, dict] = {}
-
-    ranked_lists = (
-        semantic_results,
-        keyword_results,
-    )
+    ranked_lists = (semantic_results, keyword_results)
 
     for ranked_results in ranked_lists:
-
-        for rank, result in enumerate(
-            ranked_results,
-            start=1,
-        ):
-
+        for rank, result in enumerate(ranked_results, start=1):
             chunk_id = result["chunk_id"]
 
             if chunk_id not in fused:
-
                 fused[chunk_id] = dict(result)
-
                 fused[chunk_id]["retrieval_methods"] = []
-
                 fused[chunk_id]["retrieval_score"] = 0.0
 
-            fused[chunk_id]["retrieval_score"] += (
-                1.0 / (RRF_K + rank)
-            )
+            fused[chunk_id]["retrieval_score"] += 1.0 / (RRF_K + rank)
 
-            method = result.get(
-                "retrieval_method"
-            )
-
-            if (
-                method
-                and method not in fused[chunk_id]["retrieval_methods"]
-            ):
-                fused[chunk_id]["retrieval_methods"].append(
-                    method
-                )
+            method = result.get("retrieval_method")
+            if method and method not in fused[chunk_id]["retrieval_methods"]:
+                fused[chunk_id]["retrieval_methods"].append(method)
 
     ranked = sorted(
         fused.values(),

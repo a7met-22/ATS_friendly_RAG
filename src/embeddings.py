@@ -1,10 +1,10 @@
-"""Google Gemini embedding utilities."""
+"""Async Google Gemini embedding utilities."""
 
+import asyncio
 import logging
 import math
 import random
 import re
-import time
 from typing import Any
 
 from google import genai
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 EMBED_MODEL_NAME = EMBEDDING_MODEL
 EMBEDDING_DIMENSIONS = 768
 EMBEDDING_BATCH_SIZE = 5
+MAX_CONCURRENT_BATCHES = 3  # صمام الأمان: بحد أقصى 3 طلبات متزامنة لـ Gemini
 
 EMBEDDING_RPM_LIMIT = 50
 
@@ -31,18 +32,14 @@ RETRYABLE_STATUS_CODES = {
     408, 429, 500, 502, 503, 504
 }
 
-
-
 _client: genai.Client | None = None
 
 
 def _get_client() -> genai.Client:
-    """Create the Gemini client lazily."""
-
+    """Create the Gemini client lazily (Sync - fast in-memory init)."""
     global _client
 
     if _client is None:
-
         if not GEMINI_API_KEY:
             raise RuntimeError(
                 "GEMINI_API_KEY is missing from configuration."
@@ -63,8 +60,7 @@ def _get_client() -> genai.Client:
 def normalize_embedding(
     values: list[float],
 ) -> list[float]:
-    """Return an L2-normalized embedding vector."""
-
+    """Return an L2-normalized embedding vector (Sync - pure math)."""
     vector = [float(value) for value in values]
 
     if len(vector) != EMBEDDING_DIMENSIONS:
@@ -91,50 +87,42 @@ def normalize_embedding(
 def _extract_retry_delay(
     data: Any,
 ) -> float | None:
-    """Extract retryDelay from Google's nested error response."""
-
+    """Extract retryDelay from Google's nested error response (Sync)."""
     if isinstance(data, dict):
-
         retry_delay = data.get("retryDelay")
 
         if isinstance(retry_delay, str):
-
             match = re.fullmatch(
                 r"\s*(\d+(?:\.\d+)?)s\s*",
                 retry_delay,
             )
-
             if match:
                 return float(match.group(1))
 
         for value in data.values():
             result = _extract_retry_delay(value)
-
             if result is not None:
                 return result
 
     elif isinstance(data, list):
-
         for item in data:
             result = _extract_retry_delay(item)
-
             if result is not None:
                 return result
 
     return None
 
 
-def _embed_batch_with_retry(
+async def _embed_batch_with_retry(
     client: genai.Client,
     batch: list[str],
     task_type: str,
 ):
-    """Call Gemini with bounded retry and backoff."""
-
+    """Call Gemini asynchronously with bounded retry and non-blocking backoff."""
     for attempt in range(MAX_RETRY_ATTEMPTS):
-
         try:
-            return client.models.embed_content(
+            # استخدام الواجهة غير المتزامنة client.aio
+            return await client.aio.models.embed_content(
                 model=EMBED_MODEL_NAME,
                 contents=batch,
                 config=types.EmbedContentConfig(
@@ -144,7 +132,6 @@ def _embed_batch_with_retry(
             )
 
         except APIError as exc:
-
             if (
                 exc.code not in RETRYABLE_STATUS_CODES
                 or attempt == MAX_RETRY_ATTEMPTS - 1
@@ -190,18 +177,19 @@ def _embed_batch_with_retry(
                 MAX_RETRY_ATTEMPTS,
             )
 
-            time.sleep(delay)
+            # انتظار غير معطل (Non-blocking sleep)
+            await asyncio.sleep(delay)
 
     raise RuntimeError(
         "Gemini embedding retry attempts exhausted."
     )
 
-def generate_embeddings(
+
+async def generate_embeddings(
     texts: list[str],
     task_type: str = "RETRIEVAL_DOCUMENT",
 ) -> list[list[float]]:
-    """Generate normalized embeddings in batches."""
-
+    """Generate normalized embeddings concurrently in batches."""
     if not texts:
         return []
 
@@ -228,68 +216,53 @@ def generate_embeddings(
 
     client = _get_client()
 
-    embeddings: list[list[float]] = []
-    last_batch_started_at = None
-    last_batch_size = 0
+    # تقسيم النصوص إلى مجموعات (Batches)
+    batches = [
+        texts[start : start + EMBEDDING_BATCH_SIZE]
+        for start in range(0, len(texts), EMBEDDING_BATCH_SIZE)
+    ]
 
-# Loop handling Batches
-    for start in range(0, len(texts), EMBEDDING_BATCH_SIZE):
+    # صمام الأمان: يسمح بـ 3 Batches بالتوازي كحد أقصى لتفادي Rate Limit
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_BATCHES)
+    min_interval = (EMBEDDING_BATCH_SIZE * 60.0) / EMBEDDING_RPM_LIMIT
 
-        batch = texts[start:start + EMBEDDING_BATCH_SIZE]
-
-        if last_batch_started_at is not None:
-            min_interval = (
-            last_batch_size * 60 / EMBEDDING_RPM_LIMIT
+    async def _process_single_batch(batch: list[str]) -> list[list[float]]:
+        async with semaphore:
+            response = await _embed_batch_with_retry(
+                client=client,
+                batch=batch,
+                task_type=task_type,
             )
 
-            elapsed = time.monotonic() - last_batch_started_at
-            wait_time = min_interval - elapsed
+            # تهدئة بسيطة غير معطلة لاحترام حد الـ RPM
+            await asyncio.sleep(min_interval / MAX_CONCURRENT_BATCHES)
 
-            if wait_time > 0:
-                time.sleep(wait_time)
-
-        batch_started_at = time.monotonic()
-
-        response = _embed_batch_with_retry(
-            client=client,
-            batch=batch,
-            task_type=task_type,
-        )
-
-        last_batch_started_at = batch_started_at
-        last_batch_size = len(batch)
-
-
-
-        returned = getattr(
-            response,
-            "embeddings",
-            None,
-        )
-
-        if (
-            not returned
-            or len(returned) != len(batch)
-        ):
-            raise RuntimeError(
-                "Embedding response count does not match input count."
-            )
-
-        for item in returned:
-
-            values: Any = getattr(
-                item,
-                "values",
-                None,
-            )
-
-            if values is None:
+            returned = getattr(response, "embeddings", None)
+            if not returned or len(returned) != len(batch):
                 raise RuntimeError(
-                    "Gemini returned an embedding without values."
+                    "Embedding response count does not match input count."
                 )
 
-            embeddings.append(
-                normalize_embedding(values)
-            )
+            batch_vectors = []
+            for item in returned:
+                values: Any = getattr(item, "values", None)
+                if values is None:
+                    raise RuntimeError(
+                        "Gemini returned an embedding without values."
+                    )
+                batch_vectors.append(normalize_embedding(values))
+
+            return batch_vectors
+
+    # تشغيل كل الـ Batches بالتوازي مع الحفاظ على الترتيب الدقيق
+    tasks = [_process_single_batch(batch) for batch in batches]
+    batch_results = await asyncio.gather(*tasks)
+
+    # تجميع القوائم الفرعية في قائمة واحدة بنفس ترتيب النصوص الأصلية
+    embeddings: list[list[float]] = [
+        vector
+        for batch_list in batch_results
+        for vector in batch_list
+    ]
 
     return embeddings
