@@ -6,8 +6,8 @@
 
 Authorized users are provisioned through the AUTHORIZED_USERS_JSON environment
 variable. Passwords are PBKDF2 hashes; plaintext passwords are never persisted.
-"""
-"""Credential verification and permission checks (Async-ready & Timing-safe)."""
+
+Credential verification and permission checks (Async-ready & Timing-safe)."""
 
 from __future__ import annotations
 
