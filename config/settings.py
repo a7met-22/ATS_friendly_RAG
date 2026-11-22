@@ -1,8 +1,3 @@
-
-
-
-
-
 """Centralized configuration management for the RAG project."""
 
 import os
@@ -18,24 +13,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_FILE = PROJECT_ROOT / ".env"
 DATA_DIR = PROJECT_ROOT / "uploaded_pdfs"
 
-# Parsing Ways Configuration:
-PARSER_TYPE = "pymupdf"  # LlamaParser or PyMuPDFParser
-
 # Load environment variables once from the project's .env file.
 load_dotenv(ENV_FILE)
 
-
-#Get Genereation Model
-GEMINI_MODEL = os.getenv(
-    "GEMINI_MODEL",
-    "gemini-3.8-flash"
-)
-
-#Get Embedding Model
-EMBEDDING_MODEL = os.getenv(
-    "EMBEDDING_MODEL",
-    "gemini-embedding-001"
-)
 
 def get_required_env(name: str) -> str:
     """Return a required environment variable or raise a clear error."""
@@ -50,13 +30,28 @@ def get_required_env(name: str) -> str:
     return value
 
 
-# External service configuration.
+# Parsing configuration ("llama" or "pymupdf")
+PARSER_TYPE = os.getenv("PARSER_TYPE", "pymupdf").strip().lower()
+
+# Generation & Embedding Models
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
+
+# External service configuration
 LLAMA_CLOUD_API_KEY = get_required_env("LLAMA_CLOUD_API_KEY")
 GEMINI_API_KEY = get_required_env("GEMINI_API_KEY")
 
-# Database configuration.
+# Database configuration
 DB_HOST = get_required_env("DB_HOST")
 DB_PORT = int(get_required_env("DB_PORT"))
 DB_NAME = get_required_env("DB_NAME")
 DB_USER = get_required_env("DB_USER")
 DB_PASSWORD = get_required_env("DB_PASSWORD")
+
+# Database Connection Pool configuration
+DB_POOL_MIN_SIZE = int(os.getenv("DB_POOL_MIN_SIZE", "5"))
+DB_POOL_MAX_SIZE = int(os.getenv("DB_POOL_MAX_SIZE", "50"))
+
+# FastAPI Security & JWT configuration
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "CHANGE_ME_IN_PRODUCTION_SUPER_SECRET_KEY")
+JWT_ALGORITHM = "HS256"

@@ -1,7 +1,8 @@
-"""Resolve and enforce the document scope available to a user."""
+"""Resolve and enforce the document scope available to a user (Async)."""
 
 from __future__ import annotations
 
+import asyncio
 from database_utilities.database_connection import get_connection
 from security.authorization import (
     PERMISSION_SYSTEM_SEARCH,
@@ -10,31 +11,37 @@ from security.authorization import (
 )
 
 
-def get_session_upload_ids(upload_session_id: str) -> list[int]:
-    if not upload_session_id:
+async def get_session_upload_ids(upload_session_id: str) -> list[int]:
+    """Retrieve processed document IDs uploaded during the current session."""
+    if not upload_session_id or not isinstance(upload_session_id, str):
         return []
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
+
+    async with await get_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
                 """
                 SELECT id
                 FROM public.documents
                 WHERE drive_file_id IS NULL
                   AND status = 'processed'
-                  AND metadata->>'source_type' = 'streamlit_upload'
+                  AND metadata->>'source_type' IN ('session_upload', 'streamlit_upload')
                   AND metadata->>'upload_session_id' = %s
                 ORDER BY created_at, id
                 """,
                 (upload_session_id,),
             )
-            return [row[0] for row in cur.fetchall()]
+            rows = await cur.fetchall()
+            return [row[0] for row in rows]
 
 
-def get_system_document_ids(principal: Principal | None) -> list[int]:
+async def get_system_document_ids(principal: Principal | None) -> list[int]:
+    """Retrieve all processed system document IDs for authorized principals."""
+    # Re-check permission at the service boundary (fast in-memory check -> stays Sync)
     require_permission(principal, PERMISSION_SYSTEM_SEARCH)
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
+
+    async with await get_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
                 """
                 SELECT id
                 FROM public.documents
@@ -43,10 +50,11 @@ def get_system_document_ids(principal: Principal | None) -> list[int]:
                 ORDER BY filename, id
                 """
             )
-            return [row[0] for row in cur.fetchall()]
+            rows = await cur.fetchall()
+            return [row[0] for row in rows]
 
 
-def resolve_search_document_ids(
+async def resolve_search_document_ids(
     *,
     principal: Principal | None,
     upload_session_id: str,
@@ -56,11 +64,14 @@ def resolve_search_document_ids(
     documents and may additionally include their current-session uploads.
     """
     if principal is None:
-        return get_session_upload_ids(upload_session_id)
+        return await get_session_upload_ids(upload_session_id)
 
-    # Re-check permission at the service boundary, not only in the UI.
-    system_ids = get_system_document_ids(principal)
     if include_session_uploads:
-        upload_ids = get_session_upload_ids(upload_session_id)
+        # تشغيل استعلام ملفات النظام وملفات الجلسة في نفس اللحظة بالتوازي
+        system_ids, upload_ids = await asyncio.gather(
+            get_system_document_ids(principal),
+            get_session_upload_ids(upload_session_id),
+        )
         return list(dict.fromkeys(system_ids + upload_ids))
-    return system_ids
+
+    return await get_system_document_ids(principal)
