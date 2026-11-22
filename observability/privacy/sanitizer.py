@@ -1,4 +1,6 @@
-"""Centralized data sanitization for observability."""
+
+
+"""Centralized data sanitization for observability (Optimized & Async-ready)."""
 
 from collections.abc import Mapping
 from typing import Any
@@ -10,6 +12,7 @@ from observability.privacy.presidio_engine import (
 )
 
 REDACTED = "[REDACTED]"
+MAX_SANITIZE_TEXT_LENGTH = 15_000  # حماية المعالج من النصوص الضخمة جداً في الـ Logs
 
 SENSITIVE_KEYS = {
     "password",
@@ -56,11 +59,23 @@ DIGIT_TRANSLATION = str.maketrans(
 
 PHONE_CONFIDENCE_THRESHOLD = 0.6
 
-def anonymize_text(value: str) -> str:
-    """Detect and anonymize sensitive entities in text."""
 
+def anonymize_text(value: str) -> str:
+    """Detect and anonymize sensitive entities in text (CPU-bound)."""
     if not isinstance(value, str):
         return REDACTED
+
+    stripped = value.strip()
+    if not stripped:
+        return value
+
+    # تريكة الأداء 1: النصوص القصيرة أقل من 5 حروف مستحيل تحتوي PII معقد -> نفحصها بـ Regex فقط
+    if len(stripped) < 5:
+        return redact_secrets(value)
+
+    # تريكة الأداء 2: تقليم النصوص الضخمة جداً قبل تمريرها لموديل NLP
+    if len(value) > MAX_SANITIZE_TEXT_LENGTH:
+        value = value[:MAX_SANITIZE_TEXT_LENGTH] + "... [TRUNCATED_FOR_TRACE]"
 
     try:
         analyzer, anonymizer = get_presidio_engines()
@@ -93,9 +108,9 @@ def anonymize_text(value: str) -> str:
     except Exception:
         return REDACTED
 
+
 def _normalize_key(key: Any) -> str:
     """Normalize dictionary keys for sensitive-field matching."""
-
     return (
         str(key)
         .strip()
@@ -104,12 +119,12 @@ def _normalize_key(key: Any) -> str:
         .replace(" ", "_")
     )
 
+
 def sanitize_value(
     value: Any,
     key: str | None = None,
 ) -> Any:
     """Recursively sanitize values before sending them to LangSmith."""
-
     normalized_key = _normalize_key(key) if key is not None else ""
 
     if normalized_key in SENSITIVE_KEYS:
@@ -126,13 +141,11 @@ def sanitize_value(
 
     if isinstance(value, Mapping):
         sanitized = {}
-
         for item_key, item_value in value.items():
             sanitized[str(item_key)] = sanitize_value(
                 item_value,
                 str(item_key),
             )
-
         return sanitized
 
     if isinstance(value, (list, tuple)):
@@ -152,21 +165,19 @@ def sanitize_value(
 
     return f"[UNSUPPORTED_TYPE: {type(value).__name__}]"
 
+
 def sanitize_langsmith_payload(
     payload: dict[str, Any],
 ) -> dict[str, Any]:
-    """Sanitize the complete payload before LangSmith receives it."""
-
+    """Sanitize the complete payload synchronously (CPU-heavy)."""
     try:
         sanitized = sanitize_value(payload)
-
         if isinstance(sanitized, dict):
             return sanitized
-
         return {"payload": REDACTED}
-
     except Exception:
         return {
             str(key): REDACTED
             for key in payload
         }
+

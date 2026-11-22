@@ -39,6 +39,7 @@ class Principal:
     expires_at: datetime
 
 
+
 @lru_cache(maxsize=1)
 def _load_users() -> dict[str, dict[str, Any]]:
     """Load and cache authorized users once in memory."""

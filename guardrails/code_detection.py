@@ -1,8 +1,4 @@
-
-
-
-
-"""Programming code and execution pattern detection."""
+"""Programming code and execution pattern detection (Hardened & Optimized)."""
 
 import ast
 import re
@@ -11,15 +7,25 @@ from observability.tracing import trace_operation
 
 
 # --------------------------------------------------
+# Security & Performance Constants
+# --------------------------------------------------
+
+# إزالة الحروف المخفية (Zero-Width) لمنع التحايل على الفلاتر
+_INVISIBLE_CHARS_RE = re.compile(r"[\u200b-\u200f\u202a-\u202e\ufeff]")
+
+# حد أقصى لطول النص الذي يدخل إلى AST لحماية المعالج والذاكرة
+MAX_AST_SCAN_LENGTH = 15_000
+
+
+# --------------------------------------------------
 # Code Patterns
 # --------------------------------------------------
 
 CODE_PATTERNS = [
-
     (
         "CODE_BLOCK",
         "code_block",
-        r"```[\s\S]*?```",
+        r"```[\s\(\S\)]*?```",
     ),
 
     # Dynamic execution.
@@ -87,12 +93,12 @@ CODE_PATTERNS = [
         r"cd|ls|cat|grep|find)\s+\S+",
     ),
 
-    # SQL statements.
+    # SQL statements (Hardened against ReDoS by bounding the SELECT gap).
     (
         "SQL_STATEMENT",
         "sql",
         r"(?is)\b(?:"
-        r"SELECT\s+.+?\s+FROM|"
+        r"SELECT\s+[^;\n]{1,250}?\s+FROM|"
         r"INSERT\s+INTO|"
         r"UPDATE\s+\w+\s+SET|"
         r"DELETE\s+FROM|"
@@ -117,7 +123,6 @@ CODE_PATTERNS = [
         r"<script\b"
         r")",
     ),
-
 ]
 
 
@@ -137,7 +142,6 @@ COMPILED_CODE_PATTERNS = [
 # --------------------------------------------------
 
 CODE_REQUEST_PATTERNS = [
-
     re.compile(
         r"\b(?:write|generate|create|implement|execute|run|"
         r"debug|fix|modify|review)\b"
@@ -154,10 +158,11 @@ CODE_REQUEST_PATTERNS = [
         re.IGNORECASE | re.DOTALL,
     ),
 
+    # تغطية الهمزات في اللغة العربية لمنع التحايل
     re.compile(
-        r"(?:اكتب|انشئ|اعمل|نفذ|شغل|صحح|عدل|اشرح)"
+        r"(?:[أإآا]كتب|[أإآا]نش[ئء]|[أإآا]عمل|نفذ|شغل|صحح|عدل|[أإآا]شرح)"
         r".{0,50}"
-        r"(?:كود|كوداً|سكريبت|برنامج|أمر|اكواد|كودات)",
+        r"(?:كود|كوداً|سكريبت|برنامج|[أإآا]مر|[أإآا]كواد|كودات)",
         re.IGNORECASE | re.DOTALL,
     ),
 ]
@@ -187,12 +192,12 @@ PYTHON_CODE_NODES = (
 def _detect_python_ast(
     text: str,
 ) -> bool:
-    """Detect recognizable Python code structures."""
+    """Detect recognizable Python code structures safely."""
+    if len(text) > MAX_AST_SCAN_LENGTH:
+        return False
 
     try:
-
         tree = ast.parse(text)
-
     except (SyntaxError, ValueError, TypeError):
         return False
 
@@ -205,6 +210,7 @@ def _detect_python_ast(
 # --------------------------------------------------
 # Main Code Scanner
 # --------------------------------------------------
+
 @trace_operation(name="scan_code_patterns", profile="pipeline")
 def scan_code_patterns(
     text: str,
@@ -212,47 +218,37 @@ def scan_code_patterns(
 ) -> dict[str, Any]:
     """Scan text for prohibited code and execution patterns."""
 
+    # تنظيف النص من الحروف المخفية قبل الفحص
+    cleaned_text = _INVISIBLE_CHARS_RE.sub("", text)
+
     findings = []
     detected_codes = set()
 
     for code, category, pattern in COMPILED_CODE_PATTERNS:
-
-        if pattern.search(text):
-
+        if pattern.search(cleaned_text):
             if code not in detected_codes:
-
                 findings.append({
                     "code": code,
                     "category": category,
                 })
-
                 detected_codes.add(code)
 
     # Detect code-generation and execution requests.
     if message_type == "user":
-
         for pattern in CODE_REQUEST_PATTERNS:
-
-            if pattern.search(text):
-
+            if pattern.search(cleaned_text):
                 code = "CODE_REQUEST"
-
                 if code not in detected_codes:
-
                     findings.append({
                         "code": code,
                         "category": "code_request",
                     })
-
                     detected_codes.add(code)
 
     # Additional Python syntax detection.
-    if _detect_python_ast(text):
-
+    if _detect_python_ast(cleaned_text):
         code = "PYTHON_AST"
-
         if code not in detected_codes:
-
             findings.append({
                 "code": code,
                 "category": "programming_syntax",

@@ -7,8 +7,7 @@ import asyncio
 import os
 from concurrent.futures import ProcessPoolExecutor
 from typing import Any
-import fitz
-
+import pymupdf as fitz
 
 def _parse_single_pdf(
     pdf_bytes: bytes,
