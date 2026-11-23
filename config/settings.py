@@ -52,6 +52,34 @@ DB_PASSWORD = get_required_env("DB_PASSWORD")
 DB_POOL_MIN_SIZE = int(os.getenv("DB_POOL_MIN_SIZE", "5"))
 DB_POOL_MAX_SIZE = int(os.getenv("DB_POOL_MAX_SIZE", "50"))
 
-# FastAPI Security & JWT configuration
+
+# FastAPI Security, JWT & CORS configuration
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "CHANGE_ME_IN_PRODUCTION_SUPER_SECRET_KEY")
 JWT_ALGORITHM = "HS256"
+
+# Comma-separated list of allowed frontend domains (e.g., "http://localhost:3000,https://example.com")
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8501").split(",")
+    if origin.strip()
+]
+
+# Environment & Observability
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").strip().upper()
+
+# FastAPI Security, JWT & CORS
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "CHANGE_ME_IN_PRODUCTION_SUPER_SECRET_KEY")
+JWT_ALGORITHM = "HS256"
+TRUST_PROXY_HEADERS = os.getenv("TRUST_PROXY_HEADERS", "false").strip().lower() == "true"
+
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8501").split(",")
+    if origin.strip()
+]
+
+# Redis & Session Retention
+REDIS_URL = os.getenv("REDIS_URL", "").strip()
+SESSION_CLEANUP_INTERVAL_HOURS = int(os.getenv("SESSION_CLEANUP_INTERVAL_HOURS", "6"))
+SESSION_MAX_AGE_HOURS = int(os.getenv("SESSION_MAX_AGE_HOURS", "24"))

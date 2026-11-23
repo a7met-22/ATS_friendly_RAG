@@ -1,13 +1,7 @@
-
-
-
 services:
-
   db:
     image: pgvector/pgvector:pg18
-
     container_name: ahmed-postgres
-
     restart: unless-stopped
 
     environment:
@@ -36,15 +30,41 @@ services:
     networks:
       - rag_network
 
+  redis:
+    image: redis:7-alpine
+    container_name: ahmed-redis
+    restart: unless-stopped
+
+    command:
+      [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--maxmemory",
+        "512mb",
+        "--maxmemory-policy",
+        "allkeys-lru"
+      ]
+
+    ports:
+      - "127.0.0.1:6379:6379"
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+    networks:
+      - rag_network
+
   app:
     build:
       context: .
       dockerfile: Dockerfile
 
     container_name: rag-resume-app
-
     restart: unless-stopped
-
     init: true
 
     env_file:
@@ -53,6 +73,7 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
 
     ports:
       - "8501:8501"
@@ -65,6 +86,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
 
     security_opt:
       - no-new-privileges:true
@@ -72,12 +95,10 @@ services:
     networks:
       - rag_network
 
-
 volumes:
   postgres_data:
     external: true
     name: ahmed_postgres_data
-
 
 networks:
   rag_network:

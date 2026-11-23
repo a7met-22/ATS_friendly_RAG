@@ -229,3 +229,26 @@ async def cleanup_expired_session_uploads(max_age_hours: int = 24) -> int:
                     (max_age_hours,),
                 )
                 return cur.rowcount or 0
+
+# Clean up expired session uploads in bounded batches to avoid long-running transactions
+async def cleanup_expired_session_uploads(max_age_hours: int = 24, batch_size: int = 500) -> int:
+    """Delete expired temporary session-uploaded documents in bounded batches."""
+    async with await get_connection() as conn:
+        async with conn.transaction():
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """
+                    WITH expired AS (
+                        SELECT id
+                        FROM public.documents
+                        WHERE drive_file_id IS NULL
+                          AND metadata->>'source_type' IN ('session_upload', 'streamlit_upload')
+                          AND created_at < NOW() - make_interval(hours => %s)
+                        LIMIT %s
+                    )
+                    DELETE FROM public.documents
+                    WHERE id IN (SELECT id FROM expired)
+                    """,
+                    (max_age_hours, batch_size),
+                )
+                return cur.rowcount or 0
