@@ -3,30 +3,21 @@ services:
     image: pgvector/pgvector:pg18
     container_name: ahmed-postgres
     restart: unless-stopped
-
     environment:
       POSTGRES_USER: ${DB_USER:?DB_USER is required}
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
       POSTGRES_DB: ${DB_NAME:?DB_NAME is required}
       PGDATA: /var/lib/postgresql/18/docker
-
     ports:
       - "127.0.0.1:5433:5432"
-
     volumes:
       - postgres_data:/var/lib/postgresql
-
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
-        ]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-
     networks:
       - rag_network
 
@@ -34,27 +25,14 @@ services:
     image: redis:7-alpine
     container_name: ahmed-redis
     restart: unless-stopped
-
-    command:
-      [
-        "redis-server",
-        "--appendonly",
-        "yes",
-        "--maxmemory",
-        "512mb",
-        "--maxmemory-policy",
-        "allkeys-lru"
-      ]
-
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
     ports:
       - "127.0.0.1:6379:6379"
-
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
-
     networks:
       - rag_network
 
@@ -62,36 +40,45 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-
     container_name: rag-resume-app
     restart: unless-stopped
     init: true
-
     env_file:
       - .env
-
     environment:
       DB_HOST: db
       DB_PORT: 5432
       REDIS_URL: redis://redis:6379/0
-
-    ports:
-      - "8501:8501"
-
+      ENVIRONMENT: production
+      TRUST_PROXY_HEADERS: "true"
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    expose:
+      - "8000"
     volumes:
       - ./uploaded_pdfs:/app/uploaded_pdfs
       - ./credentials.json:/app/credentials.json:ro
       - ./token.json:/app/token.json
-
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-
     security_opt:
       - no-new-privileges:true
+    networks:
+      - rag_network
 
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: rag-resume-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      app:
+        condition: service_started
     networks:
       - rag_network
 
