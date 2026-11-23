@@ -173,3 +173,39 @@ docker compose -f docker-compose.yml up --build -d
 | `POST` | `/api/v1/chat/ask` | Guest / User | Ask a question and receive a Guardrails-verified JSON response. |
 | `POST` | `/api/v1/chat/ask/stream` | Guest / User | Stream pipeline stages and verified answer chunks via SSE. |
 | `POST` | `/api/v1/admin/sync-drive` | `admin` / `system_search` | Trigger asynchronous Google Drive CV sync (`202 Accepted`). |
+| GET | /api/v1/admin/sync-status | admin / system_search | Check the status of the latest Google Drive sync job. |
+
+🧪 Quick Verification with cURL
+
+```bash
+
+1. Health Check
+
+curl -i 127.0.0
+
+2. Upload a Guest Resume PDF
+
+curl -i -X POST 127.0.0 
+-H "X-Session-ID: guest_session_1234567890" 
+-F "file=@sample_cv.pdf"
+
+3. Ask a Question (Standard JSON)
+
+curl -i -X POST 127.0.0 
+-H "Content-Type: application/json" 
+-H "X-Session-ID: guest_session_1234567890" 
+-d '{
+"question": "Summarize the candidate technical skills and years of experience.",
+"retrieval_mode": "hybrid",
+"top_k": 5
+}'
+
+4. Ask a Question (Validated SSE Stream)
+
+curl -N -X POST 127.0.0 
+-H "Content-Type: application/json" 
+-H "X-Session-ID: guest_session_1234567890" 
+-d '{
+"question": "What projects has this candidate built?",
+"retrieval_mode": "hybrid"
+}'
