@@ -37,8 +37,3 @@ client_secret*.json
 # Database backups
 *.dump
 *.sql
-
-# Environment secrets
-.env
-.env.*
-!.env.example
