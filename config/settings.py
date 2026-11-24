@@ -83,3 +83,11 @@ CORS_ALLOWED_ORIGINS = [
 REDIS_URL = os.getenv("REDIS_URL", "").strip()
 SESSION_CLEANUP_INTERVAL_HOURS = int(os.getenv("SESSION_CLEANUP_INTERVAL_HOURS", "6"))
 SESSION_MAX_AGE_HOURS = int(os.getenv("SESSION_MAX_AGE_HOURS", "24"))
+
+
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+LLM_FALLBACK_PROVIDER = os.getenv("LLM_FALLBACK_PROVIDER", "").strip().lower()
+
+OPENAI_COMPAT_BASE_URL = os.getenv("OPENAI_COMPAT_BASE_URL", "https://groq.com").strip().rstrip("/")
+OPENAI_COMPAT_API_KEY = os.getenv("OPENAI_COMPAT_API_KEY", "").strip()
+OPENAI_COMPAT_MODEL = os.getenv("OPENAI_COMPAT_MODEL", "llama-3.3-70b-versatile").strip()

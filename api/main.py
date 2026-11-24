@@ -29,6 +29,7 @@ from config.settings import (
 )
 from database_utilities.schema_bootstrap import ensure_database_schema
 from database_utilities.database_connection import close_pool, open_pool
+from src.llm_provider import close_llm_clients
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await asyncio.gather(*admin.ACTIVE_SYNC_TASKS, return_exceptions=True)
 
     await close_redis_client()
+    await close_llm_clients()
     await close_pool()
     logger.info("Shutdown completed cleanly.")
 
