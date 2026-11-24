@@ -26,6 +26,7 @@ from config.settings import (
     SESSION_CLEANUP_INTERVAL_HOURS,
     SESSION_MAX_AGE_HOURS,
 )
+from database_utilities.schema_bootstrap import ensure_database_schema
 from database_utilities.database_connection import close_pool, open_pool
 
 logger = logging.getLogger(__name__)
@@ -75,8 +76,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info("Starting RAG Resume API service (environment=%s)...", ENVIRONMENT)
 
-    # 1. Open PostgreSQL AsyncConnectionPool
+    # 1. Open PostgreSQL AsyncConnectionPool & verify schema
     await open_pool()
+
+    await ensure_database_schema()
+
 
     # 2. Verify Redis connectivity if configured
     redis = get_redis_client()
