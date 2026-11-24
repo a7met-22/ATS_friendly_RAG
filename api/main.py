@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -144,10 +145,13 @@ def create_app() -> FastAPI:
             else f"req_{uuid.uuid4().hex[:16]}"
         )
         token = request_id_ctx.set(req_id)
+        t0 = time.perf_counter()
         try:
             response = await call_next(request)
+            elapsed_ms = round((time.perf_counter() - t0) * 1000, 2)
+            response.headers["X-Response-Time-Ms"] = str(elapsed_ms)
             response.headers["X-Request-ID"] = req_id
-
+            
             session_id = getattr(request.state, "upload_session_id", None)
             if session_id:
                 response.headers["X-Session-ID"] = session_id
