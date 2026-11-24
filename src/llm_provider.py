@@ -128,7 +128,8 @@ async def _generate_via_openai_compatible(
             choices = data.get("choices") or []
             if not choices:
                 raise RuntimeError("LLM provider returned empty choices.")
-            return choices.get("message", {}).get("content") or ""
+            message = choices[0].get("message") or {}
+            return message.get("content") or ""
         except httpx.TransportError:
             if attempt == 0:
                 await asyncio.sleep(1.5)

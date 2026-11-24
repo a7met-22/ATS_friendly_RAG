@@ -19,6 +19,9 @@ from api.schemas import ErrorResponse, SyncTriggerResponse
 from api.security import get_redis_client
 from orchestrator.orchestration import sync_drive_documents
 from security.authorization import Principal
+from Data.drive_connection import connect_to_drive
+from parsingWays.llama_parsing import create_drive_parser
+
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +102,9 @@ async def _run_drive_sync_job(triggered_by: str, owner_token: str) -> None:
     })
 
     try:
-        summary = await sync_drive_documents()
+        service = await connect_to_drive()
+        parser = create_drive_parser()
+        summary = await sync_drive_documents(service=service, parser=parser)
         finished_at = datetime.now(timezone.utc).isoformat()
         logger.info("Background Google Drive sync completed: %s", summary)
         await _update_sync_status({

@@ -34,7 +34,7 @@ def get_required_env(name: str) -> str:
 PARSER_TYPE = os.getenv("PARSER_TYPE", "pymupdf").strip().lower()
 
 # Generation & Embedding Models
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
 
 # External service configuration
@@ -88,7 +88,7 @@ SESSION_MAX_AGE_HOURS = int(os.getenv("SESSION_MAX_AGE_HOURS", "24"))
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
 LLM_FALLBACK_PROVIDER = os.getenv("LLM_FALLBACK_PROVIDER", "").strip().lower()
 
-OPENAI_COMPAT_BASE_URL = os.getenv("OPENAI_COMPAT_BASE_URL", "https://groq.com").strip().rstrip("/")
+OPENAI_COMPAT_BASE_URL = os.getenv("OPENAI_COMPAT_BASE_URL", "https://api.groq.com/openai/v1").strip().rstrip("/")
 OPENAI_COMPAT_API_KEY = os.getenv("OPENAI_COMPAT_API_KEY", "").strip()
-OPENAI_COMPAT_MODEL = os.getenv("OPENAI_COMPAT_MODEL", "llama-3.3-70b-versatile").strip()
+OPENAI_COMPAT_MODEL = os.getenv("OPENAI_COMPAT_MODEL", "qwen/qwen3.8-27b").strip()
 EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION", "768"))

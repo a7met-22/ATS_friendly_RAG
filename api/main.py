@@ -30,6 +30,8 @@ from config.settings import (
 from database_utilities.schema_bootstrap import ensure_database_schema
 from database_utilities.database_connection import close_pool, open_pool
 from src.llm_provider import close_llm_clients
+from guardrails import inspect_message
+
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +84,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await open_pool()
 
     await ensure_database_schema()
+    # Pre-warm Presidio NLP engine in background thread so first user request has zero cold-start latency
+    await asyncio.to_thread(inspect_message, content="warmup", message_type="user")
 
 
     # 2. Verify Redis connectivity if configured
