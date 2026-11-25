@@ -48,13 +48,16 @@ async def close_redis_client() -> None:
 
 
 def create_access_token(principal: Principal) -> tuple[str, int]:
-    """Encode an authenticated Principal into a signed JWT token."""
+    """Encode an authenticated Principal (with dynamic RBAC permissions) into a signed JWT token."""
     now = datetime.now(timezone.utc)
     expires_in = max(int((principal.expires_at - now).total_seconds()), 60)
 
     payload = {
         "sub": principal.email,
-        "roles": list(principal.roles),
+        "roles": sorted(principal.roles),
+        "permissions": sorted(principal.permissions),
+        "full_name": principal.full_name,
+        "uid": principal.user_id,
         "iat": int(principal.authenticated_at.timestamp()),
         "exp": int(principal.expires_at.timestamp()),
     }
@@ -64,7 +67,7 @@ def create_access_token(principal: Principal) -> tuple[str, int]:
 
 
 def decode_access_token(token: str) -> Principal:
-    """Decode and validate a JWT token back into a Principal object."""
+    """Decode and validate a Bearer JWT token into an active Principal."""
     try:
         payload = jwt.decode(
             token,
@@ -83,11 +86,26 @@ def decode_access_token(token: str) -> Principal:
             detail="Invalid authentication token.",
         ) from exc
 
+    email = payload.get("sub")
+    roles = payload.get("roles")
+    if not isinstance(email, str) or not isinstance(roles, list):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Malformed authentication token payload.",
+        )
+
+    permissions = payload.get("permissions") or []
+    full_name = payload.get("full_name") or ""
+    user_id = payload.get("uid")
+
     return Principal(
-        email=str(payload["sub"]),
-        roles=frozenset(payload["roles"]),
-        authenticated_at=datetime.fromtimestamp(payload["iat"], tz=timezone.utc),
-        expires_at=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+        email=email,
+        roles=frozenset(str(r) for r in roles),
+        authenticated_at=datetime.fromtimestamp(int(payload["iat"]), tz=timezone.utc),
+        expires_at=datetime.fromtimestamp(int(payload["exp"]), tz=timezone.utc),
+        permissions=frozenset(str(p) for p in permissions),
+        full_name=str(full_name),
+        user_id=user_id if isinstance(user_id, int) else None,
     )
 
 

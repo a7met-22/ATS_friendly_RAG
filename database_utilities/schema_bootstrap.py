@@ -1,4 +1,4 @@
-"""Idempotent, zero-downtime PostgreSQL & pgvector schema bootstrap and dimension validator."""
+"""Idempotent, zero-downtime PostgreSQL & pgvector schema + RBAC bootstrap and dimension validator."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ def _get_validated_dimension() -> int:
 def _build_ddl_statements(dim: int) -> tuple[str, ...]:
     return (
         "CREATE EXTENSION IF NOT EXISTS vector",
+        # 1. جداول المستندات والقطع (RAG Core)
         """
         CREATE TABLE IF NOT EXISTS public.documents (
             id BIGSERIAL PRIMARY KEY,
@@ -47,6 +48,81 @@ def _build_ddl_statements(dim: int) -> tuple[str, ...]:
             UNIQUE (document_id, chunk_index)
         )
         """,
+        # 2. جداول الصلاحيات الديناميكية والمستخدمين (Extensible RBAC)
+        """
+        CREATE TABLE IF NOT EXISTS public.roles (
+            id BIGSERIAL PRIMARY KEY,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            is_system BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS public.role_permissions (
+            role_id BIGINT NOT NULL REFERENCES public.roles(id) ON DELETE CASCADE,
+            permission_code TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (role_id, permission_code)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS public.users (
+            id BIGSERIAL PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            full_name TEXT NOT NULL DEFAULT '',
+            password_hash TEXT NOT NULL,
+            role_id BIGINT NOT NULL REFERENCES public.roles(id) ON DELETE RESTRICT,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        # 3. تهيئة الأدوار الافتراضية وصلاحياتها (Idempotent Seed)
+        """
+        INSERT INTO public.roles (name, description, is_system)
+        VALUES
+            ('admin', 'Full system administration, user & role management, and search access', TRUE),
+            ('recruiter', 'Search system CVs, upload documents, and trigger Drive sync', TRUE),
+            ('viewer', 'Read-only search access to system resumes', TRUE)
+        ON CONFLICT (name) DO NOTHING
+        """,
+        """
+        INSERT INTO public.role_permissions (role_id, permission_code)
+        SELECT r.id, p.code
+        FROM public.roles r
+        CROSS JOIN (
+            VALUES
+                ('search_system_documents'),
+                ('documents:write'),
+                ('system:sync'),
+                ('admin:manage_users'),
+                ('admin:manage_roles')
+        ) AS p(code)
+        WHERE r.name = 'admin'
+        ON CONFLICT DO NOTHING
+        """,
+        """
+        INSERT INTO public.role_permissions (role_id, permission_code)
+        SELECT r.id, p.code
+        FROM public.roles r
+        CROSS JOIN (
+            VALUES
+                ('search_system_documents'),
+                ('documents:write'),
+                ('system:sync')
+        ) AS p(code)
+        WHERE r.name = 'recruiter'
+        ON CONFLICT DO NOTHING
+        """,
+        """
+        INSERT INTO public.role_permissions (role_id, permission_code)
+        SELECT r.id, 'search_system_documents'
+        FROM public.roles r
+        WHERE r.name = 'viewer'
+        ON CONFLICT DO NOTHING
+        """,
     )
 
 
@@ -69,6 +145,10 @@ _CONCURRENT_INDEX_STATEMENTS: tuple[str, ...] = (
     CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_documents_session_scope
         ON public.documents ((metadata->>'upload_session_id'), created_at)
         WHERE drive_file_id IS NULL
+    """,
+    """
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_lower_email
+        ON public.users (lower(email))
     """,
 )
 
@@ -103,7 +183,7 @@ async def ensure_database_schema() -> None:
     dim = _get_validated_dimension()
     ddl_statements = _build_ddl_statements(dim)
 
-    # 1. إنشاء الجداول والتحقق من الأبعاد داخل معاملة محمية بقفل المعاملة
+    # 1. إنشاء الجداول والأدوار والتحقق من الأبعاد داخل معاملة محمية بقفل المعاملة
     async with await get_connection() as conn:
         async with conn.transaction():
             async with conn.cursor() as cur:
@@ -135,4 +215,4 @@ async def ensure_database_schema() -> None:
         finally:
             await conn.set_autocommit(False)
 
-    logger.info("Database schema, vector dimension (%d), and indexes verified successfully.", dim)
+    logger.info("Database schema, RBAC tables, vector dimension (%d), and indexes verified successfully.", dim)

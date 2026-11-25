@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.logger import configure_logging, request_id_ctx
-from api.routers import admin, auth, chat, documents, health
+from api.routers import admin, auth, chat, documents, health, rbac
 from api.schemas import ErrorResponse
 from api.security import close_redis_client, get_redis_client
 from application.services.upload_service import cleanup_expired_session_uploads
@@ -221,6 +221,7 @@ def create_app() -> FastAPI:
     app.include_router(documents.router)
     app.include_router(chat.router)
     app.include_router(admin.router)
+    app.include_router(rbac.router)
 
     return app
 

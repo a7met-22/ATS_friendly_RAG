@@ -35,3 +35,10 @@ uploaded_pdfs/
 # OS files
 .DS_Store
 Thumbs.db
+frontend
+.venv
+.git
+
+frontend
+.venv
+.git

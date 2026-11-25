@@ -23,10 +23,21 @@ from parsingWays.pymupdf_parsing import parse_pdf_bytes as pymupdf_parser
 from security.authorization import (
     PERMISSION_SYSTEM_SEARCH,
     Principal,
-    _load_users,
+    _load_bootstrap_users,
     has_permission,
     is_principal_active,
 )
+from security.roles_repository import fetch_role_permissions
+
+from security.authorization import (
+    Principal,
+    _load_bootstrap_users,
+    has_permission,
+    is_principal_active,
+)
+from security.users_repository import get_user_by_email
+
+
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 _SESSION_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{16,64}$")
@@ -48,7 +59,7 @@ def get_client_ip(request: Request) -> str:
 async def get_current_principal(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
 ) -> Principal | None:
-    """Resolve authenticated Principal from Bearer JWT and verify live account status."""
+    """Resolve authenticated Principal from Bearer JWT and verify live account & permissions (DB + .env)."""
     if credentials is None or not credentials.credentials:
         return None
 
@@ -60,9 +71,29 @@ async def get_current_principal(
             detail="Authenticated session has expired. Please sign in again.",
         )
 
-    # التحقق الفوري في الذاكرة من أن الحساب لا يزال مسجلاً ولم يتم سحب صلاحياته
-    live_user = _load_users().get(principal.email.strip().casefold())
-    if live_user is None:
+    normalized_email = principal.email.strip().casefold()
+
+    # 1. التحقق أولاً من قاعدة البيانات (المستخدمون المضافون من لوحة الأدمن)
+    db_user = await get_user_by_email(normalized_email)
+    if db_user is not None:
+        if not db_user["is_active"]:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="This user account has been deactivated.",
+            )
+        return Principal(
+            email=db_user["email"],
+            roles=frozenset({db_user["role_name"]}),
+            authenticated_at=principal.authenticated_at,
+            expires_at=principal.expires_at,
+            permissions=db_user["permissions"],
+            full_name=db_user["full_name"],
+            user_id=db_user["id"],
+        )
+
+    # 2. التحقق من حسابات الطوارئ في .env (Bootstrap Admin)
+    bootstrap_user = _load_bootstrap_users().get(normalized_email)
+    if bootstrap_user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Account is no longer authorized.",
@@ -70,10 +101,32 @@ async def get_current_principal(
 
     return Principal(
         email=principal.email,
-        roles=live_user["roles"],
+        roles=bootstrap_user["roles"],
         authenticated_at=principal.authenticated_at,
         expires_at=principal.expires_at,
+        permissions=bootstrap_user["permissions"],
     )
+
+
+def require_permission_dep(permission_code: str):
+    """Reusable FastAPI dependency factory enforcing any RBAC permission code."""
+    async def _checker(
+        principal: Principal | None = Depends(get_current_principal),
+    ) -> Principal:
+        if principal is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required.",
+            )
+        if not has_permission(principal, permission_code):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing required permission: {permission_code}",
+            )
+        return principal
+
+    return _checker
+
 
 
 async def require_authenticated_user(

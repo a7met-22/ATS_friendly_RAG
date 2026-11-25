@@ -72,6 +72,27 @@ services:
     networks:
       - dev_network
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: rag-resume-frontend-dev
+    restart: unless-stopped
+    expose:
+      - "3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+    depends_on:
+      app:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - dev_network
+
   nginx:
     image: nginx:1.27-alpine
     container_name: rag-resume-nginx-dev
@@ -83,6 +104,8 @@ services:
       - ./nginx/proxy_params.conf:/etc/nginx/proxy_params.conf:ro
     depends_on:
       app:
+        condition: service_started
+      frontend:
         condition: service_started
     networks:
       - dev_network

@@ -51,7 +51,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       ENVIRONMENT: production
       TRUST_PROXY_HEADERS: "true"
-    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+    command: ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     expose:
       - "8000"
     volumes:
@@ -68,6 +68,23 @@ services:
     networks:
       - rag_network
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: prod
+    container_name: rag-resume-frontend
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      app:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - rag_network
+
   nginx:
     image: nginx:1.27-alpine
     container_name: rag-resume-nginx
@@ -79,6 +96,8 @@ services:
       - ./nginx/proxy_params.conf:/etc/nginx/proxy_params.conf:ro
     depends_on:
       app:
+        condition: service_started
+      frontend:
         condition: service_started
     networks:
       - rag_network
