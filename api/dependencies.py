@@ -6,7 +6,7 @@ import os
 import re
 import uuid
 from functools import lru_cache
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -36,6 +36,13 @@ from security.authorization import (
     is_principal_active,
 )
 from security.users_repository import get_user_by_email
+
+from security.permissions_catalog import (
+    PERMISSION_SYSTEM_SEARCH,
+    PERMISSION_SYSTEM_SYNC,
+)
+
+
 
 
 
@@ -128,43 +135,6 @@ def require_permission_dep(permission_code: str):
     return _checker
 
 
-
-async def require_authenticated_user(
-    principal: Principal | None = Depends(get_current_principal),
-) -> Principal:
-    """Ensure the request belongs to an active authenticated user."""
-    if principal is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required to access this resource.",
-        )
-    return principal
-
-
-async def require_system_search_user(
-    principal: Principal = Depends(require_authenticated_user),
-) -> Principal:
-    """Ensure the authenticated user has system document search permissions."""
-    if not has_permission(principal, PERMISSION_SYSTEM_SEARCH):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have permission to search system documents.",
-        )
-    return principal
-
-
-async def require_drive_sync_user(
-    principal: Principal = Depends(require_authenticated_user),
-) -> Principal:
-    """Allow both 'admin' and 'system_search' roles to trigger Google Drive sync."""
-    if not has_permission(principal, PERMISSION_SYSTEM_SEARCH):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="System search or administrator privileges are required for this operation.",
-        )
-    return principal
-
-
 async def get_upload_session_id(
     request: Request,
     x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
@@ -211,3 +181,30 @@ def get_document_parser() -> Any:
     if PARSER_TYPE == "pymupdf":
         return pymupdf_parser
     raise RuntimeError(f"Unsupported PARSER_TYPE configured: {PARSER_TYPE}")
+
+
+def require_permission_dep(permission: str) -> Callable[..., Principal]:
+    """Dependency factory enforcing that the authenticated user holds a specific RBAC permission."""
+
+    def _dependency(
+        principal: Principal | None = Depends(get_current_principal),
+    ) -> Principal:
+        if principal is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required to access this resource.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        if not has_permission(principal, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing required permission: '{permission}'.",
+            )
+        return principal
+
+    return _dependency
+
+
+# Reusable permission-bound dependencies (DRY aliases over require_permission_dep)
+require_system_search_user = require_permission_dep(PERMISSION_SYSTEM_SEARCH)
+require_drive_sync_user = require_permission_dep(PERMISSION_SYSTEM_SYNC)

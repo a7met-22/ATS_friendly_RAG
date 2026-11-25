@@ -9,6 +9,8 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
+
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -68,7 +70,7 @@ async def _periodic_session_cleanup_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Manage startup and graceful shutdown of DB pool, Redis, and background tasks."""
+    """Manage startup and guaranteed LIFO resource cleanup across all failure/shutdown paths."""
     configure_logging()
 
     if ENVIRONMENT == "production" and (
@@ -80,42 +82,41 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     logger.info("Starting RAG Resume API service (environment=%s)...", ENVIRONMENT)
 
-    # 1. Open PostgreSQL AsyncConnectionPool & verify schema
-    await open_pool()
+    async with AsyncExitStack() as stack:
+        # 1. Open PostgreSQL AsyncConnectionPool & register immediate cleanup callback
+        await open_pool()
+        stack.push_async_callback(close_pool)
 
-    await ensure_database_schema()
-    # Pre-warm Presidio NLP engine in background thread so first user request has zero cold-start latency
-    await asyncio.to_thread(inspect_message, content="warmup", message_type="user")
+        await ensure_database_schema()
 
+        # Pre-warm Presidio NLP engine in background thread so first user request has zero cold-start latency
+        await asyncio.to_thread(inspect_message, content="warmup", message_type="user")
 
-    # 2. Verify Redis connectivity if configured
-    redis = get_redis_client()
-    if redis is not None:
-        try:
-            await redis.ping()
-            logger.info("Connected to Redis successfully.")
-        except Exception as exc:
-            logger.warning("Redis unavailable at startup; using In-Memory fallback: %s", exc)
+        # 2. Verify Redis connectivity & register cleanup callback
+        redis = get_redis_client()
+        if redis is not None:
+            stack.push_async_callback(close_redis_client)
+            try:
+                await redis.ping()
+                logger.info("Connected to Redis successfully.")
+            except Exception as exc:
+                logger.warning("Redis unavailable at startup; using In-Memory fallback: %s", exc)
 
-    # 3. Start independent periodic cleanup worker
-    cleanup_task = asyncio.create_task(_periodic_session_cleanup_loop())
+        # 3. Start independent periodic cleanup worker & guarantee cancellation on exit
+        cleanup_task = asyncio.create_task(_periodic_session_cleanup_loop())
 
-    yield
+        async def _stop_cleanup_worker() -> None:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
 
-    # Graceful Shutdown Sequence
-    logger.info("Shutting down RAG Resume API service...")
-    cleanup_task.cancel()
-    await asyncio.gather(cleanup_task, return_exceptions=True)
+        stack.push_async_callback(_stop_cleanup_worker)
 
-    if admin.ACTIVE_SYNC_TASKS:
-        for task in list(admin.ACTIVE_SYNC_TASKS):
-            task.cancel()
-        await asyncio.gather(*admin.ACTIVE_SYNC_TASKS, return_exceptions=True)
+        yield
+        logger.info("Shutting down RAG Resume API service gracefully...")
 
-    await close_redis_client()
-    await close_llm_clients()
-    await close_pool()
-    logger.info("Shutdown completed cleanly.")
 
 
 def create_app() -> FastAPI:
