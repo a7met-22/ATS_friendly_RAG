@@ -103,26 +103,6 @@ async def get_current_principal(
     )
 
 
-def require_permission_dep(permission_code: str):
-    """Reusable FastAPI dependency factory enforcing any RBAC permission code."""
-    async def _checker(
-        principal: Principal | None = Depends(get_current_principal),
-    ) -> Principal:
-        if principal is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Authentication required.",
-            )
-        if not has_permission(principal, permission_code):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Missing required permission: {permission_code}",
-            )
-        return principal
-
-    return _checker
-
-
 async def get_upload_session_id(
     request: Request,
     x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
