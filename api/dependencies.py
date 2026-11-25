@@ -18,10 +18,10 @@ from api.security import (
     user_chat_limiter,
 )
 from config.settings import PARSER_TYPE
-from parsingWays.llama_parsing import create_drive_parser
-from parsingWays.pymupdf_parsing import parse_pdf_bytes as pymupdf_parser
+
 from security.authorization import (
     PERMISSION_SYSTEM_SEARCH,
+    PERMISSION_SYSTEM_SYNC,
     Principal,
     _load_bootstrap_users,
     has_permission,
@@ -29,20 +29,8 @@ from security.authorization import (
 )
 from security.roles_repository import fetch_role_permissions
 
-from security.authorization import (
-    Principal,
-    _load_bootstrap_users,
-    has_permission,
-    is_principal_active,
-)
+
 from security.users_repository import get_user_by_email
-
-from security.permissions_catalog import (
-    PERMISSION_SYSTEM_SEARCH,
-    PERMISSION_SYSTEM_SYNC,
-)
-
-
 
 
 
@@ -175,11 +163,17 @@ async def enforce_chat_rate_limit(
 
 @lru_cache(maxsize=1)
 def get_document_parser() -> Any:
-    """Return a cached, reusable PDF parser instance based on configuration."""
+    """Return a cached, reusable PDF parser instance with lazy dependency loading."""
     if PARSER_TYPE == "llama":
+        from parsingWays.llama_parsing import create_drive_parser
+
         return create_drive_parser()
+
     if PARSER_TYPE == "pymupdf":
-        return pymupdf_parser
+        from parsingWays.pymupdf_parsing import parse_pdf_bytes
+
+        return parse_pdf_bytes
+
     raise RuntimeError(f"Unsupported PARSER_TYPE configured: {PARSER_TYPE}")
 
 
