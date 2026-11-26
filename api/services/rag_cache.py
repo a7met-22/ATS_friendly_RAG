@@ -1,8 +1,4 @@
-
-
-
-
-"""Tenant-isolated Redis caching service for Guardrails-verified RAG responses."""
+"""Tenant-isolated, content-versioned Redis caching service for Guardrails-verified RAG responses."""
 
 from __future__ import annotations
 
@@ -25,13 +21,15 @@ def build_rag_cache_key(
     retrieval_mode: str,
     top_k: int,
     question: str,
+    document_versions: list[str] | None = None,
 ) -> str:
-    """Build a deterministic, tenant-isolated SHA-256 cache key."""
+    """Build a deterministic, tenant-isolated, version-aware SHA-256 cache key."""
+    doc_signature = sorted(document_versions) if document_versions else sorted(document_ids)
     raw_signature = json.dumps(
         {
-            "v": 1,
+            "v": 2,
             "access": access_level,
-            "docs": sorted(document_ids),
+            "docs": doc_signature,
             "mode": retrieval_mode,
             "top_k": top_k,
             "q": " ".join(question.split()).casefold(),

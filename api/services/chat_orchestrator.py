@@ -16,7 +16,10 @@ from api.services.rag_cache import (
     get_cached_rag_answer,
     set_cached_rag_answer,
 )
-from application.services.document_scope import resolve_search_document_ids
+from application.services.document_scope import (
+    get_document_version_fingerprints,
+    resolve_search_document_ids,
+)
 from guardrails import inspect_message
 from prompts.registry import get_system_prompt
 from security.authorization import (
@@ -104,9 +107,11 @@ async def execute_rag_pipeline(
                     **response_metadata,
                 }
 
+            document_versions = await get_document_version_fingerprints(document_ids)
             cache_key = build_rag_cache_key(
                 access_level=access_level,
                 document_ids=document_ids,
+                document_versions=document_versions,
                 retrieval_mode=body.retrieval_mode,
                 top_k=body.top_k,
                 question=validated_question,

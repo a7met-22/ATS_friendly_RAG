@@ -36,7 +36,6 @@ async def get_session_upload_ids(upload_session_id: str) -> list[int]:
 
 async def get_system_document_ids(principal: Principal | None) -> list[int]:
     """Retrieve all processed system document IDs for authorized principals."""
-    # Re-check permission at the service boundary (fast in-memory check -> stays Sync)
     require_permission(principal, PERMISSION_SYSTEM_SEARCH)
 
     async with await get_connection() as conn:
@@ -67,7 +66,6 @@ async def resolve_search_document_ids(
         return await get_session_upload_ids(upload_session_id)
 
     if include_session_uploads:
-        # تشغيل استعلام ملفات النظام وملفات الجلسة في نفس اللحظة بالتوازي
         system_ids, upload_ids = await asyncio.gather(
             get_system_document_ids(principal),
             get_session_upload_ids(upload_session_id),
@@ -75,3 +73,23 @@ async def resolve_search_document_ids(
         return list(dict.fromkeys(system_ids + upload_ids))
 
     return await get_system_document_ids(principal)
+
+
+async def get_document_version_fingerprints(document_ids: list[int]) -> list[str]:
+    """Return deterministic version stamps (id:content_hash:updated_at) for cache invalidation."""
+    if not document_ids:
+        return []
+
+    async with await get_connection() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """
+                SELECT id, COALESCE(content_hash, ''), COALESCE(EXTRACT(EPOCH FROM updated_at)::text, '0')
+                FROM public.documents
+                WHERE id = ANY(%s)
+                ORDER BY id
+                """,
+                (document_ids,),
+            )
+            rows = await cur.fetchall()
+            return [f"{row[0]}:{row[1]}:{row[2]}" for row in rows]
