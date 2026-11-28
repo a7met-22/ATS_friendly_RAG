@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
+import ipaddress
 from functools import lru_cache
 from typing import Any, Callable
 
@@ -19,9 +20,8 @@ from api.security import (
 )
 from config.settings import PARSER_TYPE
 
+from security.permissions_catalog import PERMISSION_SYSTEM_SEARCH, PERMISSION_SYSTEM_SYNC
 from security.authorization import (
-    PERMISSION_SYSTEM_SEARCH,
-    PERMISSION_SYSTEM_SYNC,
     Principal,
     _load_bootstrap_users,
     has_permission,
@@ -38,18 +38,45 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 _SESSION_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{16,64}$")
 
 
+def _parse_valid_ip(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    candidate = raw.strip()
+    try:
+        return str(ipaddress.ip_address(candidate))
+    except ValueError:
+        return None
+
+
+def _is_trusted_proxy_peer(peer_host: str | None) -> bool:
+    if not peer_host:
+        return False
+    try:
+        ip_obj = ipaddress.ip_address(peer_host.strip())
+        return ip_obj.is_private or ip_obj.is_loopback
+    except ValueError:
+        return False
+
+
 def get_client_ip(request: Request) -> str:
-    """Extract client IP safely, trusting X-Forwarded-For only when behind a configured proxy."""
+    """Extract client IP safely by verifying the immediate peer is a trusted internal proxy."""
+    peer_host = request.client.host if request.client else None
     trust_proxy = os.getenv("TRUST_PROXY_HEADERS", "false").strip().lower() == "true"
-    if trust_proxy:
+
+    if trust_proxy and _is_trusted_proxy_peer(peer_host):
+        # Take the right-most hop appended by our trusted Nginx gateway (never the spoofable left-most hop)
         forwarded_for = request.headers.get("X-Forwarded-For")
         if forwarded_for:
-            return forwarded_for.split(",")[0].strip()
+            rightmost_hop = forwarded_for.split(",")[-1]
+            parsed = _parse_valid_ip(rightmost_hop)
+            if parsed:
+                return parsed
 
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
+        real_ip = _parse_valid_ip(request.headers.get("X-Real-IP"))
+        if real_ip:
+            return real_ip
 
+    return _parse_valid_ip(peer_host) or "unknown"
 
 async def get_current_principal(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer_scheme),
